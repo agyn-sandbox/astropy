@@ -31,6 +31,25 @@ def test_empty_initialization_invalid():
                                  "'time_bin_start' as the first column but found 'flux'")
 
 
+def test_required_columns_missing_binned():
+    # Build a valid binned TS first
+    ts = BinnedTimeSeries(time_bin_start=['2016-03-22T12:30:31',
+                                          '2016-03-22T12:30:34',
+                                          '2016-03-22T12:30:37'],
+                          time_bin_size=3 * u.s,
+                          data=[[1, 4, 3]])
+
+    # Remove required 'time_bin_size'
+    ts2 = ts.copy()
+    with pytest.raises(ValueError, match=r"BinnedTimeSeries object is invalid - missing required column: 'time_bin_size'"):
+        ts2.remove_column('time_bin_size')
+
+    # Rename required 'time_bin_start'
+    ts3 = ts.copy()
+    with pytest.raises(ValueError, match=r"BinnedTimeSeries object is invalid - missing required column: 'time_bin_start'"):
+        ts3.rename_column('time_bin_start', 'start')
+
+
 def test_initialization_time_bin_invalid():
 
     # Make sure things crash when time_bin_* is passed incorrectly.

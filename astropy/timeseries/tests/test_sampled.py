@@ -380,20 +380,38 @@ def test_required_columns():
     assert exc.value.args[0] == ("TimeSeries object is invalid - expected "
                                  "'time' as the first column but found 'a'")
 
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(ValueError, match=r"TimeSeries object is invalid - missing required column: 'time'"):
         ts.copy().remove_column('time')
-    assert exc.value.args[0] == ("TimeSeries object is invalid - expected "
-                                 "'time' as the first column but found 'a'")
 
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(ValueError, match=r"TimeSeries object is invalid - missing required column: 'time'"):
         ts.copy().remove_columns(['time', 'a'])
-    assert exc.value.args[0] == ("TimeSeries object is invalid - expected "
-                                 "'time' as the first column but found 'b'")
 
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(ValueError, match=r"TimeSeries object is invalid - missing required column: 'time'"):
         ts.copy().rename_column('time', 'banana')
+
+    # When two required columns are set and one is missing, prefer missing-column message
+    ts2 = ts.copy()
+    ts2._required_columns = ['time', 'a']
+    with pytest.raises(ValueError, match=r"TimeSeries object is invalid - missing required column: 'a'"):
+        ts2.copy().remove_column('a')
+    with pytest.raises(ValueError, match=r"TimeSeries object is invalid - missing required column: 'a'"):
+        ts2.copy().rename_column('a', 'z')
+
+    # Relax-mode interaction via _delay_required_column_checks(): ordering-only check remains
+    ts3 = TimeSeries(time=INPUT_TIME, data=[[10, 2, 3]], names=['a'])
+    from astropy.table import Column
+    with pytest.raises(ValueError) as exc:
+        with ts3._delay_required_column_checks():
+            ts3.add_column(Column([1, 2, 3], name='z'), index=0)
+    # The check runs when the context exits; required 'time' present but not first -> ordering error
     assert exc.value.args[0] == ("TimeSeries object is invalid - expected "
-                                 "'time' as the first column but found 'banana'")
+                                 "'time' as the first column but found 'z'")
+
+    # Multiple missing required columns: ensure pluralization and formatting
+    ts4 = ts.copy()
+    ts4._required_columns = ['time', 'a', 'b']
+    with pytest.raises(ValueError, match=r"TimeSeries object is invalid - missing required columns: 'a', 'b'"):
+        ts4.copy().remove_columns(['a', 'b'])
 
 
 @pytest.mark.parametrize('cls', [BoxLeastSquares, LombScargle])

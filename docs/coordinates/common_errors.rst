@@ -84,3 +84,12 @@ as follows::
     >>> aa = cirs_topo.transform_to(AltAz(obstime=t, location=home))
     >>> aa.alt # doctest: +FLOAT_CMP
     <Latitude 90. deg>
+
+As of this change, you can also transform directly between ITRS and observed frames
+without going through CIRS, by doing the subtraction and local ENU rotation internally.
+This path ignores atmospheric refraction (pressure must be 0). For example:
+
+    >>> # Direct ITRS -> AltAz using topocentric subtraction internally
+    >>> itrs_topo = cirs_topo.transform_to(ITRS(obstime=t))
+    >>> AltAz(obstime=t, location=home).realize_frame(itrs_topo.transform_to(AltAz(obstime=t, location=home)).data).alt # doctest: +ELLIPSIS
+    <Latitude 90. deg>

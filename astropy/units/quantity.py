@@ -696,16 +696,16 @@ class Quantity(np.ndarray):
         # Same for inputs, but here also convert if necessary.
         arrays = []
         for input_, converter in zip(inputs, converters):
-            input_ = getattr(input_, "value", input_)
-            if converter:
-                try:
+            try:
+                input_ = getattr(input_, "value", input_)
+                if converter:
                     input_ = converter(input_)
-                except ValueError:
-                    # If converter application fails for mixed duck types in
-                    # binary arithmetic, defer to the other operand.
-                    if _should_defer_mixed_duck():
-                        return NotImplemented
-                    raise
+            except (AttributeError, TypeError, ValueError):
+                # If converter value extraction or application fails for mixed
+                # duck types in binary ufunc calls, defer to the other operand.
+                if _should_defer_mixed_duck():
+                    return NotImplemented
+                raise
             arrays.append(input_)
 
         # Call our superclass's __array_ufunc__

@@ -7,6 +7,7 @@ purely in ITRS via topocentric subtraction and ENU rotations.
 import numpy as np
 
 from astropy import units as u
+from astropy.coordinates import Angle, Longitude
 from astropy.coordinates.baseframe import frame_transform_graph
 from astropy.coordinates.transformations import FunctionTransformWithFiniteDifference
 from astropy.coordinates.representation import (
@@ -55,16 +56,13 @@ def _pressure_nonzero(frame):
 
 def _wrap_az_positive(az_rad):
     """Wrap azimuth in radians to [0, 2*pi)."""
-    return np.mod(az_rad, 2.0 * np.pi)
+    # Use Longitude with wrap_angle=360 deg for [0,360) behaviour
+    return Longitude(az_rad * u.radian, wrap_angle=360 * u.deg).to_value(u.radian)
 
 
 def _wrap_ha_pm_pi(ha_rad):
     """Wrap hour angle in radians to (-pi, pi]."""
-    # Use arctan2 output range by applying wrap via modulo then shifting
-    ha = (ha_rad + np.pi) % (2.0 * np.pi) - np.pi
-    # Ensure +pi included (i.e., (-pi, pi]) like Angle.wrap_at(pi)
-    ha = np.where(ha == -np.pi, np.pi, ha)
-    return ha
+    return Angle(ha_rad * u.radian).wrap_at(180 * u.deg).to_value(u.radian)
 
 
 @frame_transform_graph.transform(FunctionTransformWithFiniteDifference, ITRS, AltAz)
@@ -82,9 +80,14 @@ def itrs_to_altaz(itrs_coo, altaz_frame):
             "use CIRS/ICRS path or set pressure=0"
         )
 
-    # Ensure ITRS obstime matches target AltAz obstime
-    if np.any(itrs_coo.obstime != altaz_frame.obstime):
-        itrs_coo = itrs_coo.transform_to(ITRS(obstime=altaz_frame.obstime))
+    # Ensure ITRS obstime matches target AltAz obstime, handling None robustly
+    target_obstime = altaz_frame.obstime
+    if target_obstime is None:
+        if getattr(itrs_coo, "obstime", None) is not None:
+            itrs_coo = itrs_coo.transform_to(ITRS(obstime=None))
+    else:
+        if np.any(getattr(itrs_coo, "obstime", None) != target_obstime):
+            itrs_coo = itrs_coo.transform_to(ITRS(obstime=target_obstime))
 
     # Observer position in ITRS
     obs_itrs = altaz_frame.location.get_itrs(altaz_frame.obstime).cartesian
@@ -93,7 +96,7 @@ def itrs_to_altaz(itrs_coo, altaz_frame):
     topo = itrs_coo.cartesian - obs_itrs
 
     # ECEF -> ENU rotation at site
-    lon, lat, _ = altaz_frame.location.to_geodetic("WGS84")
+    lon, lat, _ = altaz_frame.location.to_geodetic()
     lam = lon.to_value(u.radian)
     phi = lat.to_value(u.radian)
     R = _r_ecef_to_enu(phi, lam)
@@ -104,9 +107,9 @@ def itrs_to_altaz(itrs_coo, altaz_frame):
 
     distance = np.sqrt(e * e + n * n + uup * uup) * u.m
     alt = np.arctan2(uup, np.hypot(e, n)) * u.radian
-    az = _wrap_az_positive(np.arctan2(e, n)) * u.radian
+    az = Longitude(np.arctan2(e, n) * u.radian, wrap_angle=360 * u.deg)
 
-    rep = SphericalRepresentation(lon=az, lat=alt, distance=distance)
+    rep = SphericalRepresentation(lon=az.to(u.radian), lat=alt, distance=distance)
     return altaz_frame.realize_frame(rep)
 
 
@@ -130,11 +133,12 @@ def altaz_to_itrs(altaz_coo, itrs_frame):
         raise ValueError("Distance required for AltAz->ITRS direct transform")
 
     # Site parameters and spherical to ENU
-    lon, lat, _ = altaz_coo.location.to_geodetic("WGS84")
+    lon, lat, _ = altaz_coo.location.to_geodetic()
     lam = lon.to_value(u.radian)
     phi = lat.to_value(u.radian)
     alt = altaz_coo.alt.to_value(u.radian)
-    az = altaz_coo.az.to_value(u.radian)
+    # Wrap azimuth into [0, 2pi) for consistency
+    az = Longitude(altaz_coo.az, wrap_angle=360 * u.deg).to_value(u.radian)
     d = altaz_coo.distance.to_value(u.m)
 
     e = d * np.cos(alt) * np.sin(az)
@@ -144,9 +148,18 @@ def altaz_to_itrs(altaz_coo, itrs_frame):
     R = _r_ecef_to_enu(phi, lam)
     topo_ecef = R.T @ np.array([e, n, uup])
 
-    obs_itrs = altaz_coo.location.get_itrs(altaz_coo.obstime).cartesian
+    # Realize at observed obstime first
+    obs_time = altaz_coo.obstime
+    obs_itrs = altaz_coo.location.get_itrs(obs_time).cartesian
     cart = CartesianRepresentation(*(topo_ecef * u.m)) + obs_itrs
-    return itrs_frame.realize_frame(cart)
+    itrs_at_obs = ITRS(obstime=obs_time).realize_frame(cart)
+
+    # If requested target ITRS frame has different obstime (incl. None), transform
+    target_obstime = itrs_frame.obstime
+    if np.any(getattr(itrs_at_obs, "obstime", None) != target_obstime):
+        return itrs_at_obs.transform_to(ITRS(obstime=target_obstime))
+    else:
+        return itrs_frame.realize_frame(itrs_at_obs.data)
 
 
 @frame_transform_graph.transform(FunctionTransformWithFiniteDifference, ITRS, HADec)
@@ -164,15 +177,20 @@ def itrs_to_hadec(itrs_coo, hadec_frame):
             "use CIRS/ICRS path or set pressure=0"
         )
 
-    # Ensure ITRS obstime matches target obstime
-    if np.any(itrs_coo.obstime != hadec_frame.obstime):
-        itrs_coo = itrs_coo.transform_to(ITRS(obstime=hadec_frame.obstime))
+    # Ensure ITRS obstime matches target obstime, handling None robustly
+    target_obstime = hadec_frame.obstime
+    if target_obstime is None:
+        if getattr(itrs_coo, "obstime", None) is not None:
+            itrs_coo = itrs_coo.transform_to(ITRS(obstime=None))
+    else:
+        if np.any(getattr(itrs_coo, "obstime", None) != target_obstime):
+            itrs_coo = itrs_coo.transform_to(ITRS(obstime=target_obstime))
 
     # Observer and topocentric vector
     obs_itrs = hadec_frame.location.get_itrs(hadec_frame.obstime).cartesian
     topo = itrs_coo.cartesian - obs_itrs
 
-    lon, lat, _ = hadec_frame.location.to_geodetic("WGS84")
+    lon, lat, _ = hadec_frame.location.to_geodetic()
     lam = lon.to_value(u.radian)
     phi = lat.to_value(u.radian)
     R = _r_ecef_to_enu(phi, lam)
@@ -191,7 +209,8 @@ def itrs_to_hadec(itrs_coo, hadec_frame):
     sin_phi = np.sin(phi)
     cos_phi = np.cos(phi)
 
-    dec = np.arcsin(sin_alt * sin_phi + cos_alt * cos_phi * np.cos(az))
+    arg_dec = sin_alt * sin_phi + cos_alt * cos_phi * np.cos(az)
+    dec = np.arcsin(np.clip(arg_dec, -1.0, 1.0))
 
     # Guard against cos(dec)=0
     cos_dec = np.cos(dec)
@@ -200,7 +219,9 @@ def itrs_to_hadec(itrs_coo, hadec_frame):
     cosH = (sin_alt - sin_phi * np.sin(dec)) / np.where(cos_phi * cos_dec == 0, np.inf, cos_phi * cos_dec)
     ha = _wrap_ha_pm_pi(np.arctan2(sinH, cosH))
 
-    rep = SphericalRepresentation(lon=ha * u.radian, lat=dec * u.radian, distance=distance)
+    # Ensure HA is in hourangle units for HADec
+    ha_angle = Angle(ha * u.radian).wrap_at(180 * u.deg).to(u.hourangle)
+    rep = SphericalRepresentation(lon=ha_angle, lat=dec * u.radian, distance=distance)
     return hadec_frame.realize_frame(rep)
 
 
@@ -224,9 +245,10 @@ def hadec_to_itrs(hadec_coo, itrs_frame):
         raise ValueError("Distance required for HADec->ITRS direct transform")
 
     # Site latitude and convert HADec to AltAz
-    lon, lat, _ = hadec_coo.location.to_geodetic("WGS84")
+    lon, lat, _ = hadec_coo.location.to_geodetic()
     phi = lat.to_value(u.radian)
-    H = hadec_coo.ha.to_value(u.radian)
+    # Wrap HA to (-pi, pi]
+    H = Angle(hadec_coo.ha).wrap_at(180 * u.deg).to_value(u.radian)
     dec = hadec_coo.dec.to_value(u.radian)
     d = hadec_coo.distance.to_value(u.m)
 
@@ -258,7 +280,14 @@ def hadec_to_itrs(hadec_coo, itrs_frame):
     R = _r_ecef_to_enu(phi, lam)
     topo_ecef = R.T @ np.array([e, n, uup])
 
-    obs_itrs = hadec_coo.location.get_itrs(hadec_coo.obstime).cartesian
+    # Realize at observed obstime first
+    obs_time = hadec_coo.obstime
+    obs_itrs = hadec_coo.location.get_itrs(obs_time).cartesian
     cart = CartesianRepresentation(*(topo_ecef * u.m)) + obs_itrs
-    return itrs_frame.realize_frame(cart)
+    itrs_at_obs = ITRS(obstime=obs_time).realize_frame(cart)
 
+    target_obstime = itrs_frame.obstime
+    if np.any(getattr(itrs_at_obs, "obstime", None) != target_obstime):
+        return itrs_at_obs.transform_to(ITRS(obstime=target_obstime))
+    else:
+        return itrs_frame.realize_frame(itrs_at_obs.data)

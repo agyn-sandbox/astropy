@@ -6,7 +6,7 @@ import pytest
 
 from astropy import units as u
 from astropy.time import Time
-from astropy.coordinates import SkyCoord, EarthLocation
+from astropy.coordinates import SkyCoord, EarthLocation, Angle, Longitude
 from astropy.coordinates.representation import CartesianRepresentation
 from astropy.coordinates.builtin_frames import ITRS, AltAz, HADec, CIRS
 
@@ -178,3 +178,49 @@ def test_pressure_not_implemented():
     with pytest.raises(NotImplementedError):
         hd.transform_to(ITRS(obstime=t))
 
+
+def test_wrapping_azimuth_boundaries():
+    t = _time()
+    home = _home()
+    # Build two AltAz positions near wrap boundaries and ensure wrapping is correct
+    d = 1000 * u.m
+    # Use az just below 0 and just above 360 by constructing AltAz and round-tripping
+    for az_deg in (-0.0001, 359.9999):
+        aa = AltAz(az=az_deg * u.deg, alt=45 * u.deg, distance=d, obstime=t, location=home)
+        it = aa.transform_to(ITRS(obstime=t))
+        aa2 = it.transform_to(AltAz(obstime=t, location=home))
+        # Wrapped to [0, 360)
+        az_wrapped = Longitude(az_deg * u.deg, wrap_angle=360 * u.deg)
+        assert (aa2.az - az_wrapped).to_value(u.arcsec) == pytest.approx(0.0, abs=1e-4)
+
+
+def test_wrapping_hourangle_boundaries():
+    t = _time()
+    home = _home()
+    d = 1000 * u.m
+    for ha_h in (-12.000001, 12.000001):
+        hd = HADec(ha=ha_h * u.hourangle, dec=10 * u.deg, distance=d, obstime=t, location=home)
+        it = hd.transform_to(ITRS(obstime=t))
+        hd2 = it.transform_to(HADec(obstime=t, location=home))
+        ha_wrapped = Angle(ha_h * u.hourangle).wrap_at(12 * u.hourangle)
+        # Compare in hourangle
+        assert (hd2.ha - ha_wrapped).to_value(u.second) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_observed_to_itrs_obstime_labeling():
+    t = _time()
+    home = _home()
+    d = 1234 * u.m
+
+    # Build AltAz with distance and convert to ITRS while requesting different obstime label
+    aa = AltAz(az=10 * u.deg, alt=20 * u.deg, distance=d, obstime=t, location=home)
+    it_target = ITRS(obstime=t + 1 * u.day)
+    it = aa.transform_to(it_target)
+    # Check label matches target
+    assert it.obstime == it_target.obstime
+
+    # Ensure numerically the same as ITRS realized at observed time transformed to target obstime
+    it_obs = aa.transform_to(ITRS(obstime=t))
+    it_obs_to_target = it_obs.transform_to(it_target)
+    sep = it.separation_3d(it_obs_to_target)
+    assert sep.to_value(u.mm) == pytest.approx(0.0, abs=1e-3)

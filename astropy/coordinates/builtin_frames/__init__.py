@@ -50,6 +50,7 @@ from . import cirs_observed_transforms
 from . import icrs_observed_transforms
 from . import intermediate_rotation_transforms
 from . import ecliptic_transforms
+from . import itrs_observed_transforms
 
 # Import this after importing other frames, since this requires various
 # transformtions to set up the LSR frames

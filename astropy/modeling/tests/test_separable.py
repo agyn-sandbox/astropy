@@ -148,3 +148,39 @@ def test_custom_model_separable():
 
     assert not model_c().separable
     assert np.all(separability_matrix(model_c()) == [True, True])
+
+
+def test_nested_join_independence():
+    # Regression for nested '&' joins where the right operand is a precomputed matrix.
+    cm = models.Linear1D(10) & models.Linear1D(5)
+    m = models.Pix2Sky_TAN() & cm
+    expected = np.array([
+        [True, True, False, False],
+        [True, True, False, False],
+        [False, False, True, False],
+        [False, False, False, True],
+    ])
+    assert_allclose(separability_matrix(m), expected)
+
+
+def test_join_associativity():
+    a = models.Linear1D(1)
+    b = models.Linear1D(2)
+    c = models.Linear1D(3)
+    m1 = a & (b & c)
+    m2 = (a & b) & c
+    sm1 = separability_matrix(m1)
+    sm2 = separability_matrix(m2)
+    assert_allclose(sm1, sm2)
+    assert_allclose(sm1, np.eye(3, dtype=bool))
+
+
+def test_block_independence_mixed_dimensionality():
+    # Non-separable 2D model joined with 1D model should be block-diagonal.
+    m = models.Rotation2D(30) & models.Linear1D(4)
+    expected = np.array([
+        [True, True, False],
+        [True, True, False],
+        [False, False, True],
+    ])
+    assert_allclose(separability_matrix(m), expected)

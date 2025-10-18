@@ -241,8 +241,12 @@ def _cstack(left, right):
     if isinstance(right, Model):
         cright = _coord_matrix(right, 'right', noutp)
     else:
+        # Preserve the separability structure of a precomputed right matrix.
+        # Allocate space for the full compound output count and copy the given
+        # matrix into the lower-right block. Do not fill with ones, as that
+        # would incorrectly imply dependencies between right-hand outputs.
         cright = np.zeros((noutp, right.shape[1]))
-        cright[-right.shape[0]:, -right.shape[1]:] = 1
+        cright[-right.shape[0]:, -right.shape[1]:] = right
 
     return np.hstack([cleft, cright])
 

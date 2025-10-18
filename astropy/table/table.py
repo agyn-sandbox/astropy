@@ -17,7 +17,7 @@ from astropy import log
 from astropy.units import Quantity, QuantityInfo
 from astropy.utils import isiterable, ShapedLikeNDArray
 from astropy.utils.console import color_print
-from astropy.utils.exceptions import AstropyUserWarning
+from astropy.utils.exceptions import AstropyUserWarning, AstropyDeprecationWarning
 from astropy.utils.masked import Masked
 from astropy.utils.metadata import MetaData, MetaAttribute
 from astropy.utils.data_info import BaseColumnInfo, MixinInfo, DataInfo
@@ -36,6 +36,51 @@ from .ndarray_mixin import NdarrayMixin
 from .mixins.registry import get_mixin_handler
 from . import conf
 
+
+# TODO (Astropy 5.2): Remove this helper and the corresponding call site in
+# Table._convert_data_to_col. Future behavior: do not auto-convert structured
+# numpy ndarrays to NdarrayMixin; add them as plain Column instead.
+def _view_structured_ndarray_as_ndarray_mixin(data):
+    """
+    Deprecation shim for legacy behavior when adding structured ndarrays to
+    Table.
+
+    If ``data`` is a structured numpy ndarray with multiple fields, emit an
+    AstropyDeprecationWarning and return a NdarrayMixin view along with a flag
+    indicating conversion. Otherwise, return ``data`` unchanged and ``False``.
+
+    Returns
+    -------
+    (data, converted) : tuple
+        data
+            Either the original input or ``data.view(NdarrayMixin)`` if a
+            conversion was applied.
+        converted
+            ``True`` if conversion occurred, otherwise ``False``.
+
+    Notes
+    -----
+    This helper exists only as a deprecation shim and will be removed in
+    Astropy 5.2, at which point structured ndarrays will be added as a plain
+    ``Column`` without auto-conversion.
+    """
+    if (isinstance(data, np.ndarray)
+            and getattr(data, 'dtype', None) is not None
+            # Mirror existing behavior using len(dtype) > 1 to detect multiple
+            # fields. ``dtype.names`` could also be used, but we intentionally
+            # keep current logic to avoid behavior changes.
+            and len(data.dtype) > 1):
+        warnings.warn(
+            "Adding a structured ndarray as a Table column currently auto-"
+            "converts to astropy.table.NdarrayMixin. This will change in "
+            "Astropy 5.2: structured ndarrays will be added as a plain Column. "
+            "To silence now, wrap in astropy.table.Column; to retain current "
+            "behavior, wrap in astropy.table.NdarrayMixin.",
+            AstropyDeprecationWarning,
+            stacklevel=4,
+        )
+        return data.view(NdarrayMixin), True
+    return data, False
 
 _implementation_notes = """
 This string has informal notes concerning Table implementation for developers.
@@ -1243,8 +1288,10 @@ class Table:
         # mixin class
         if (not isinstance(data, Column) and not data_is_mixin
                 and isinstance(data, np.ndarray) and len(data.dtype) > 1):
-            data = data.view(NdarrayMixin)
-            data_is_mixin = True
+            # Wrap in helper for warning now and easy removal later (Astropy 5.2).
+            data, _converted = _view_structured_ndarray_as_ndarray_mixin(data)
+            if _converted:
+                data_is_mixin = True
 
         # Get the final column name using precedence.  Some objects may not
         # have an info attribute. Also avoid creating info as a side effect.

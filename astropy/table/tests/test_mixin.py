@@ -20,7 +20,7 @@ from astropy import coordinates
 from astropy import units as u
 from astropy.table.column import BaseColumn
 from astropy.table import table_helpers
-from astropy.utils.exceptions import AstropyUserWarning
+from astropy.utils.exceptions import AstropyUserWarning, AstropyDeprecationWarning
 from astropy.utils.metadata import MergeConflictWarning
 from astropy.coordinates.tests.test_representation import representation_equal
 from astropy.coordinates.tests.helper import skycoord_equal
@@ -712,9 +712,12 @@ def test_ndarray_mixin():
     d = np.arange(8, dtype='i8').reshape(4, 2).view(NdarrayMixin)
 
     # Add one during initialization and the next as a new column.
-    t = Table([a], names=['a'])
-    t['b'] = b
-    t['c'] = c
+    with pytest.warns(AstropyDeprecationWarning):
+        t = Table([a], names=['a'])
+    with pytest.warns(AstropyDeprecationWarning):
+        t['b'] = b
+    with pytest.warns(AstropyDeprecationWarning):
+        t['c'] = c
     t['d'] = d
 
     assert isinstance(t['a'], NdarrayMixin)

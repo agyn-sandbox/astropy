@@ -37,6 +37,40 @@ from .mixins.registry import get_mixin_handler
 from . import conf
 
 
+# TODO (Astropy 5.2): Remove this helper and the corresponding call site in
+# Table._convert_data_to_col. Future behavior: do not auto-convert structured
+# numpy ndarrays to NdarrayMixin; add them as plain Column instead.
+def _view_structured_ndarray_as_ndarray_mixin(data):
+    """
+    If data is a structured numpy ndarray with multiple fields, emit a
+    FutureWarning and return a NdarrayMixin view along with a flag indicating
+    conversion. Otherwise, return data unchanged and False.
+
+    Returns
+    -------
+    (new_data, converted) : tuple
+        new_data is either data or data.view(NdarrayMixin).
+        converted is True if conversion occurred.
+    """
+    if (isinstance(data, np.ndarray)
+            and getattr(data, 'dtype', None) is not None
+            and len(data.dtype) > 1):
+        warnings.warn(
+            "Adding a structured numpy ndarray as a Table column currently "
+            "auto-converts it to astropy.table.NdarrayMixin. This behavior is "
+            "deprecated and will change in Astropy 5.2: structured ndarrays "
+            "will be added as a plain Column without auto-conversion. "
+            "To adopt the future behavior now (and silence this warning), wrap "
+            "the array in astropy.table.Column before adding "
+            "(e.g., t['a'] = Column(arr)). If you rely on the current "
+            "NdarrayMixin behavior, wrap explicitly "
+            "(e.g., t['a'] = NdarrayMixin(arr) or arr.view(NdarrayMixin)).",
+            FutureWarning,
+            stacklevel=3,
+        )
+        return data.view(NdarrayMixin), True
+    return data, False
+
 _implementation_notes = """
 This string has informal notes concerning Table implementation for developers.
 
@@ -1243,8 +1277,10 @@ class Table:
         # mixin class
         if (not isinstance(data, Column) and not data_is_mixin
                 and isinstance(data, np.ndarray) and len(data.dtype) > 1):
-            data = data.view(NdarrayMixin)
-            data_is_mixin = True
+            # Wrap in helper for warning now and easy removal later (Astropy 5.2).
+            data, _converted = _view_structured_ndarray_as_ndarray_mixin(data)
+            if _converted:
+                data_is_mixin = True
 
         # Get the final column name using precedence.  Some objects may not
         # have an info attribute. Also avoid creating info as a side effect.

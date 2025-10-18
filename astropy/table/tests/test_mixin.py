@@ -712,9 +712,12 @@ def test_ndarray_mixin():
     d = np.arange(8, dtype='i8').reshape(4, 2).view(NdarrayMixin)
 
     # Add one during initialization and the next as a new column.
-    t = Table([a], names=['a'])
-    t['b'] = b
-    t['c'] = c
+    with pytest.warns(FutureWarning):
+        t = Table([a], names=['a'])
+    with pytest.warns(FutureWarning):
+        t['b'] = b
+    with pytest.warns(FutureWarning):
+        t['c'] = c
     t['d'] = d
 
     assert isinstance(t['a'], NdarrayMixin)

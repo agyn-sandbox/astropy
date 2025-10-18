@@ -40,12 +40,14 @@ def test_required_columns_missing_binned():
                           data=[[1, 4, 3]])
 
     # Remove required 'time_bin_size'
-    with pytest.raises(ValueError, match=r"BinnedTimeSeries object is invalid - missing required column\(s\): 'time_bin_size'"):
-        ts.copy().remove_column('time_bin_size')
+    ts2 = ts.copy()
+    with pytest.raises(ValueError, match=r"BinnedTimeSeries object is invalid - missing required column: 'time_bin_size'"):
+        ts2.remove_column('time_bin_size')
 
     # Rename required 'time_bin_start'
-    with pytest.raises(ValueError, match=r"BinnedTimeSeries object is invalid - missing required column\(s\): 'time_bin_start'"):
-        ts.copy().rename_column('time_bin_start', 'start')
+    ts3 = ts.copy()
+    with pytest.raises(ValueError, match=r"BinnedTimeSeries object is invalid - missing required column: 'time_bin_start'"):
+        ts3.rename_column('time_bin_start', 'start')
 
 
 def test_initialization_time_bin_invalid():

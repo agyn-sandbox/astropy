@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from functools import wraps
 
 from astropy.table import QTable
+from astropy.utils.data_info import as_scalar_or_list_str
 
 __all__ = ['BaseTimeSeries', 'autocheck_required_columns']
 
@@ -76,16 +77,16 @@ class BaseTimeSeries(QTable):
                                  .format(self.__class__.__name__, required_columns[0], plural))
 
             # New: if not in relax mode, explicitly report missing required columns
+            # Precedence: missing-columns errors are raised before ordering errors.
             if not self._required_columns_relax:
                 missing = [c for c in required_columns if c not in self.colnames]
                 if missing:
-                    # Format as 'a' or 'a', 'b'
-                    if len(missing) == 1:
-                        missing_str = f"'{missing[0]}'"
-                    else:
-                        missing_str = ', '.join(f"'{c}'" for c in missing)
+                    formatted = as_scalar_or_list_str(missing, quote="'", sep=', ')
+                    plural_missing = 's' if len(missing) > 1 else ''
                     raise ValueError(
-                        f"{self.__class__.__name__} object is invalid - missing required column(s): {missing_str}"
+                        "{} object is invalid - missing required column{}: {}".format(
+                            self.__class__.__name__, plural_missing, formatted
+                        )
                     )
 
             # Case: ordering/prefix mismatch (all required present but not first)

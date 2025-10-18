@@ -899,3 +899,115 @@ def test_pixel_to_world_values_different_int_types():
     for int_coord, np64_coord in zip(int_sliced.pixel_to_world_values(*pixel_arrays),
                                      np64_sliced.pixel_to_world_values(*pixel_arrays)):
         assert all(int_coord == np64_coord)
+
+
+def _build_pc_mixed_wcs():
+    """
+    Construct a simple 3D linear WCS where spatial world axes depend on the
+    spectral pixel axis via the PC matrix (spectral-spatial coupling).
+
+    World axes order: (X, Y, WAVE)
+    Pixel axes order (FITS): (axis1, axis2, axis3) -> (x, y, z)
+    Coupling:
+      - X depends on x and z (PC1_1=1, PC1_3=0.5)
+      - Y depends on y and z (PC2_2=1, PC2_3=-0.25)
+      - WAVE depends only on z (PC3_3=1)
+    """
+    hdr = Header()
+    hdr['NAXIS'] = 3
+    hdr['NAXIS1'] = 10
+    hdr['NAXIS2'] = 11
+    hdr['NAXIS3'] = 12
+    # Use simple linear types/units to avoid spherical projections
+    hdr['CTYPE1'] = 'LINEAR'
+    hdr['CTYPE2'] = 'LINEAR'
+    hdr['CTYPE3'] = 'WAVE'
+    hdr['CUNIT1'] = 'deg'
+    hdr['CUNIT2'] = 'deg'
+    hdr['CUNIT3'] = 'Angstrom'
+    hdr['CRVAL1'] = 0.0
+    hdr['CRVAL2'] = 0.0
+    hdr['CRVAL3'] = 1000.0
+    hdr['CRPIX1'] = 1.0
+    hdr['CRPIX2'] = 1.0
+    hdr['CRPIX3'] = 1.0
+    hdr['CDELT1'] = 1.0
+    hdr['CDELT2'] = 1.0
+    hdr['CDELT3'] = 2.0
+
+    w = WCS(hdr)
+    # Set PC coupling: world(x) depends on pixel x and z; world(y) on y and z
+    import numpy as np
+    pc = np.zeros((3, 3), dtype=float)
+    pc[0, 0] = 1.0   # PC1_1
+    pc[0, 2] = 0.5   # PC1_3
+    pc[1, 1] = 1.0   # PC2_2
+    pc[1, 2] = -0.25 # PC2_3
+    pc[2, 2] = 1.0   # PC3_3
+    w.wcs.pc = pc
+    return w
+
+
+@pytest.mark.xfail(strict=True, reason="world_to_pixel_values incorrect for sliced WCS with coupled axes")
+def test_world_to_pixel_values_coupled_axes_sliced_matches_full():
+    """
+    Regression: sliced world_to_pixel must use the implied world value for the
+    dropped axis based on the fixed pixel slice, not a constant.
+    """
+    wcs = _build_pc_mixed_wcs()
+
+    # Choose a spectral slice index and two spatial pixels
+    z = 4
+    x, y = 2, 3
+
+    # Full WCS round-trip sanity check
+    w_full = wcs.pixel_to_world_values(x, y, z)
+    p_full = wcs.world_to_pixel_values(*w_full)
+    from numpy.testing import assert_allclose
+    assert_allclose(p_full, (float(x), float(y), float(z)))
+
+    # Slice out the spectral pixel axis with an integer
+    sliced = SlicedLowLevelWCS(wcs, [slice(None), slice(None), z])
+
+    # On the sliced WCS, world_to_pixel should match the first two components
+    # from the full WCS (x, y), since z is fixed by the slice.
+    p_sliced = sliced.world_to_pixel_values(w_full[0], w_full[1])
+    assert_allclose(p_sliced, (float(x), float(y)))
+
+
+def test_pixel_to_world_values_coupled_axes_sliced():
+    """
+    pixel_to_world remains correct on sliced WCS with coupled axes.
+    """
+    wcs = _build_pc_mixed_wcs()
+    z = 4
+    x, y = 2, 3
+    sliced = SlicedLowLevelWCS(wcs, [slice(None), slice(None), z])
+
+    w_sliced = sliced.pixel_to_world_values(x, y)
+    w_full = wcs.pixel_to_world_values(x, y, z)
+    from numpy.testing import assert_allclose
+    assert_allclose(w_sliced, (w_full[0], w_full[1]))
+
+
+@pytest.mark.xfail(strict=True, reason="world_to_pixel_values incorrect broadcasting for coupled axes when slicing")
+def test_world_to_pixel_values_coupled_axes_broadcasting():
+    """
+    Broadcasting: when world inputs are arrays, dropped-axis fill must broadcast
+    to the kept-world broadcast shape.
+    """
+    wcs = _build_pc_mixed_wcs()
+    z = 4
+
+    # Two spatial pixel points at the same fixed spectral index z
+    import numpy as np
+    x_arr = np.array([2, 5])
+    y_arr = np.array([3, 6])
+
+    w1, w2, _ = wcs.pixel_to_world_values(x_arr, y_arr, z)
+
+    sliced = SlicedLowLevelWCS(wcs, [slice(None), slice(None), z])
+    px, py = sliced.world_to_pixel_values(w1, w2)
+    from numpy.testing import assert_allclose
+    assert_allclose(px, x_arr.astype(float))
+    assert_allclose(py, y_arr.astype(float))

@@ -244,17 +244,39 @@ class SlicedLowLevelWCS(BaseWCSWrapper):
 
     def world_to_pixel_values(self, *world_arrays):
         world_arrays = tuple(map(np.asanyarray, world_arrays))
-        world_arrays_new = []
-        iworld_curr = -1
-        for iworld in range(self._wcs.world_n_dim):
-            if iworld in self._world_keep:
-                iworld_curr += 1
-                world_arrays_new.append(world_arrays[iworld_curr])
-            else:
-                world_arrays_new.append(1.)
 
-        world_arrays_new = np.broadcast_arrays(*world_arrays_new)
-        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))
+        # Fast path: if no world axes were dropped, delegate directly
+        if len(self._world_keep) == self._wcs.world_n_dim:
+            pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays))
+        else:
+            # Evaluate the world values on the slice hyperplane for the
+            # dropped world axes. This ensures consistency for correlated WCS.
+            pixel_arrays_eval = []
+            for ipix in range(self._wcs.pixel_n_dim):
+                slc = self._slices_pixel[ipix]
+                if isinstance(slc, numbers.Integral):
+                    pixel_arrays_eval.append(slc)
+                else:
+                    # Any scalar works; dropped world axes are uncorrelated
+                    # with kept pixel axes by construction.
+                    pixel_arrays_eval.append(0)
+
+            pixel_arrays_eval = np.broadcast_arrays(*pixel_arrays_eval)
+            world_eval = self._wcs.pixel_to_world_values(*pixel_arrays_eval)
+
+            # Build full set of world arrays for the underlying call.
+            world_arrays_new = []
+            iworld_curr = -1
+            for iworld in range(self._wcs.world_n_dim):
+                if iworld in self._world_keep:
+                    iworld_curr += 1
+                    world_arrays_new.append(world_arrays[iworld_curr])
+                else:
+                    # Use the world value implied by the fixed slice
+                    world_arrays_new.append(np.asanyarray(world_eval[iworld]))
+
+            world_arrays_new = np.broadcast_arrays(*world_arrays_new)
+            pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))
 
         for ipixel in range(self._wcs.pixel_n_dim):
             if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:

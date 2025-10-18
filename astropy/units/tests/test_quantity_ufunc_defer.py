@@ -72,30 +72,31 @@ def test_numpy_scalar_and_array_unchanged():
     q = 3 * u.m
     s = 2.0
     arr = np.array([1.0, 2.0])
-    res_s = np.add(q, s)
+    # Multiplication with numpy scalars/arrays should continue to be handled
+    # by Quantity as before.
+    res_s = np.multiply(q, s)
     assert isinstance(res_s, Quantity)
     assert res_s.unit == u.m
 
-    res_arr = np.add(q, arr)
+    res_arr = np.multiply(q, arr)
     assert isinstance(res_arr, Quantity)
     assert res_arr.unit == u.m
 
 
 def test_converter_condition_arg_valueerror_defers():
-    # Build a duck that will cause astropy conversion attempt to fail when
-    # applying converter(input_) due to non-numeric payload but should defer.
-    class BadValueDuck(DuckArray):
+    # Build a duck that presents a 'value' that is non-numeric so that
+    # converter(input_) will raise ValueError in the Quantity path. Quantity
+    # should then return NotImplemented and the duck takes over.
+    class BadValueDuck:
         def __init__(self, unit):
-            # Intentionally store a string; converter(input_) will raise
             self._unit = unit
-            self.q = ("bad",) * u.Quantity(1, unit).unit  # fake to satisfy type
+            self.value = "bad"  # non-numeric to trigger ValueError
 
         @property
         def unit(self):
             return self._unit
 
         def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
-            # On deferral, just return a known value to prove it reached here
             if method == "__call__" and ufunc.nin == 2:
                 return DuckArray(5 * self.unit)
             return NotImplemented
@@ -105,4 +106,3 @@ def test_converter_condition_arg_valueerror_defers():
     res = np.add(q, duck)
     assert isinstance(res, DuckArray)
     assert res.q == 5 * u.m
-

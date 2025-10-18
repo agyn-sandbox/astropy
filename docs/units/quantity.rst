@@ -219,6 +219,16 @@ To perform these operations on |Quantity| objects:
     >>> 20. * u.cm / (1. * u.m)  # doctest: +FLOAT_CMP
     <Quantity 20. cm / m>
 
+.. note::
+   Interoperability with duck types: for binary arithmetic with mixed
+   operands where the other object is a non-astropy, quantity-like duck
+   type (e.g., an array that implements the NumPy ``__array_ufunc__``
+   protocol or carries a ``unit`` attribute), and Astropy cannot interpret
+   that input, ``Quantity.__array_ufunc__`` will return ``NotImplemented``.
+   This allows NumPy to dispatch to the other operand’s implementation or its
+   reflected operation. Behavior for pure Astropy ``Quantity`` operands and
+   for NumPy scalars/ndarrays is unchanged.
+
 For multiplication, you can change how to represent the resulting object by
 using the :meth:`~astropy.units.quantity.Quantity.to` method:
 

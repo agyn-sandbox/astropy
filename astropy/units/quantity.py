@@ -650,7 +650,7 @@ class Quantity(np.ndarray):
                 return False
             # If all non-Quantity are plain numpy arrays/scalars, do not defer.
             def _is_plain_numpy(x):
-                return isinstance(x, (np.ndarray, np.number))
+                return isinstance(x, (np.ndarray, np.number, numbers.Number))
             # Any foreign duck? (has __array_ufunc__ or 'unit' attribute)
             for inp in inputs:
                 if isinstance(inp, Quantity) or _is_plain_numpy(inp):

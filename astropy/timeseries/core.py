@@ -68,13 +68,28 @@ class BaseTimeSeries(QTable):
 
             plural = 's' if len(required_columns) > 1 else ''
 
+            # Case: no columns present and not in relax mode - preserve existing message
             if not self._required_columns_relax and len(self.colnames) == 0:
 
                 raise ValueError("{} object is invalid - expected '{}' "
                                  "as the first column{} but time series has no columns"
                                  .format(self.__class__.__name__, required_columns[0], plural))
 
-            elif self.colnames[:len(required_columns)] != required_columns:
+            # New: if not in relax mode, explicitly report missing required columns
+            if not self._required_columns_relax:
+                missing = [c for c in required_columns if c not in self.colnames]
+                if missing:
+                    # Format as 'a' or 'a', 'b'
+                    if len(missing) == 1:
+                        missing_str = f"'{missing[0]}'"
+                    else:
+                        missing_str = ', '.join(f"'{c}'" for c in missing)
+                    raise ValueError(
+                        f"{self.__class__.__name__} object is invalid - missing required column(s): {missing_str}"
+                    )
+
+            # Case: ordering/prefix mismatch (all required present but not first)
+            if self.colnames[:len(required_columns)] != required_columns:
 
                 raise ValueError("{} object is invalid - expected '{}' "
                                  "as the first column{} but found '{}'"

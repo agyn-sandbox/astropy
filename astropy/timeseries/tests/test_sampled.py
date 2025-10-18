@@ -380,20 +380,22 @@ def test_required_columns():
     assert exc.value.args[0] == ("TimeSeries object is invalid - expected "
                                  "'time' as the first column but found 'a'")
 
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(ValueError, match=r"TimeSeries object is invalid - missing required column\(s\): 'time'"):
         ts.copy().remove_column('time')
-    assert exc.value.args[0] == ("TimeSeries object is invalid - expected "
-                                 "'time' as the first column but found 'a'")
 
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(ValueError, match=r"TimeSeries object is invalid - missing required column\(s\): 'time'"):
         ts.copy().remove_columns(['time', 'a'])
-    assert exc.value.args[0] == ("TimeSeries object is invalid - expected "
-                                 "'time' as the first column but found 'b'")
 
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(ValueError, match=r"TimeSeries object is invalid - missing required column\(s\): 'time'"):
         ts.copy().rename_column('time', 'banana')
-    assert exc.value.args[0] == ("TimeSeries object is invalid - expected "
-                                 "'time' as the first column but found 'banana'")
+
+    # When two required columns are set and one is missing, prefer missing-column message
+    ts2 = ts.copy()
+    ts2._required_columns = ['time', 'a']
+    with pytest.raises(ValueError, match=r"TimeSeries object is invalid - missing required column\(s\): 'a'"):
+        ts2.copy().remove_column('a')
+    with pytest.raises(ValueError, match=r"TimeSeries object is invalid - missing required column\(s\): 'a'"):
+        ts2.copy().rename_column('a', 'z')
 
 
 @pytest.mark.parametrize('cls', [BoxLeastSquares, LombScargle])

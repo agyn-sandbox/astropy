@@ -728,3 +728,40 @@ def test_read_html_unicode():
                 '</table>']
     dat = Table.read(table_in, format='ascii.html')
     assert np.all(dat['col1'] == ['Δ', 'Δ'])
+
+
+def test_html_write_respects_formats_string():
+    """
+    HTML writer should apply formats dict with a format string.
+    """
+    t = Table([[1.239e-24, 3.234e-15], [1, 2]], names=('a', 'b'))
+    out = StringIO()
+    ascii.write(t, out, format='html', formats={'a': '%.2e'})
+    s = out.getvalue()
+    assert '<td>1.24e-24</td>' in s
+    assert '<td>3.23e-15</td>' in s
+
+
+def test_html_write_respects_formats_callable():
+    """
+    HTML writer should apply formats dict with a callable.
+    """
+    t = Table([[1.2391e-24, 3.2346e-15], [1, 2]], names=('a', 'b'))
+    out = StringIO()
+    ascii.write(t, out, format='html', formats={'a': lambda x: f'{x:.3e}'})
+    s = out.getvalue()
+    assert '<td>1.239e-24</td>' in s
+    assert '<td>3.235e-15</td>' in s
+
+
+def test_html_write_respects_formats_multicol():
+    """
+    HTML writer should propagate col format to split subcolumns when multicol=True.
+    """
+    vals = np.array([(1.2345, 2.3456), (3.4567, 4.5678)])
+    t = Table([vals], names=('col2',))
+    out = StringIO()
+    ascii.write(t, out, format='html', formats={'col2': '%.1f'})
+    s = out.getvalue()
+    for substr in ('<td>1.2</td>', '<td>2.3</td>', '<td>3.5</td>', '<td>4.6</td>'):
+        assert substr in s

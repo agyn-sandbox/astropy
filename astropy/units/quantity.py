@@ -636,11 +636,41 @@ class Quantity(np.ndarray):
         result : `~astropy.units.Quantity`
             Results of the ufunc, with the unit set properly.
         """
+        # Helper: decide whether to defer to a mixed duck-type input.
+        # We only defer for binary ufunc __call__ (nin == 2) with mixed
+        # Quantity and non-Quantity inputs, where the non-Quantity side is a duck that
+        # either advertises __array_ufunc__ or carries a 'unit' attribute.
+        def _should_defer_mixed_duck():
+            if method != "__call__" or getattr(function, "nin", None) != 2:
+                return False
+            # Identify non-Quantity inputs.
+            has_quantity = any(isinstance(i, Quantity) for i in inputs)
+            has_non_quantity = any(not isinstance(i, Quantity) for i in inputs)
+            if not (has_quantity and has_non_quantity):
+                return False
+            # If all non-Quantity are plain numpy arrays/scalars, do not defer.
+            def _is_plain_numpy(x):
+                return isinstance(x, (np.ndarray, np.number, numbers.Number))
+            # Any foreign duck? (has __array_ufunc__ or 'unit' attribute)
+            for inp in inputs:
+                if isinstance(inp, Quantity) or _is_plain_numpy(inp):
+                    continue
+                if hasattr(inp, "__array_ufunc__") or hasattr(inp, "unit"):
+                    return True
+            return False
+
         # Determine required conversion functions -- to bring the unit of the
         # input to that expected (e.g., radian for np.sin), or to get
         # consistent units between two inputs (e.g., in np.add) --
         # and the unit of the result (or tuple of units for nout > 1).
-        converters, unit = converters_and_unit(function, method, *inputs)
+        try:
+            converters, unit = converters_and_unit(function, method, *inputs)
+        except (AttributeError, TypeError, ValueError):
+            # If we are in a mixed duck-type situation for binary arithmetic,
+            # return NotImplemented to allow numpy to try the other operand.
+            if _should_defer_mixed_duck():
+                return NotImplemented
+            raise
 
         out = kwargs.get("out", None)
         # Avoid loop back by turning any Quantity output into array views.
@@ -666,8 +696,17 @@ class Quantity(np.ndarray):
         # Same for inputs, but here also convert if necessary.
         arrays = []
         for input_, converter in zip(inputs, converters):
-            input_ = getattr(input_, "value", input_)
-            arrays.append(converter(input_) if converter else input_)
+            try:
+                input_ = getattr(input_, "value", input_)
+                if converter:
+                    input_ = converter(input_)
+            except (AttributeError, TypeError, ValueError):
+                # If converter value extraction or application fails for mixed
+                # duck types in binary ufunc calls, defer to the other operand.
+                if _should_defer_mixed_duck():
+                    return NotImplemented
+                raise
+            arrays.append(input_)
 
         # Call our superclass's __array_ufunc__
         result = super().__array_ufunc__(function, method, *arrays, **kwargs)

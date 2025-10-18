@@ -637,8 +637,8 @@ class Quantity(np.ndarray):
             Results of the ufunc, with the unit set properly.
         """
         # Helper: decide whether to defer to a mixed duck-type input.
-        # We only defer for binary arithmetic calls where inputs are mixed
-        # Quantity and non-Quantity, and the non-Quantity side is a duck that
+        # We only defer for binary ufunc __call__ (nin == 2) with mixed
+        # Quantity and non-Quantity inputs, where the non-Quantity side is a duck that
         # either advertises __array_ufunc__ or carries a 'unit' attribute.
         def _should_defer_mixed_duck():
             if method != "__call__" or getattr(function, "nin", None) != 2:

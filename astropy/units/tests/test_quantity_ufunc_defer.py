@@ -106,3 +106,61 @@ def test_converter_condition_arg_valueerror_defers():
     res = np.add(q, duck)
     assert isinstance(res, DuckArray)
     assert res.q == 5 * u.m
+
+
+
+def test_converter_discovery_failure_defers():
+    # Foreign duck lacks astropy-compatible unit container; getting converter
+    # may raise TypeError/AttributeError. Quantity should defer.
+    class ForeignNoConv:
+        __array_priority__ = 1e6
+        def __init__(self):
+            self.unit = object()
+        def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+            if method == "__call__" and ufunc.nin == 2:
+                return 'handled-by-foreign'
+            return NotImplemented
+    q = 1 * u.m
+    f = ForeignNoConv()
+    assert np.add(q, f) == 'handled-by-foreign'
+
+
+def test_converter_application_typeerror_defers():
+    # Converter may be constructed, but applying it raises TypeError.
+    class ForeignBadApply:
+        def __init__(self, unit):
+            self._unit = unit
+            class Weird:
+                # Behaves oddly under numpy array coercion
+                def __array__(self):
+                    raise TypeError('cannot array-coerce')
+            self.value = Weird()
+        @property
+        def unit(self):
+            return self._unit
+        def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+            if method == "__call__" and ufunc.nin == 2:
+                return 'handled-typeerror'
+            return NotImplemented
+    q = 1 * u.m
+    f = ForeignBadApply(u.m)
+    assert np.add(q, f) == 'handled-typeerror'
+
+
+def test_reduce_accumulate_at_unchanged():
+    # Ensure we did not alter behavior for ufunc methods other than __call__
+    arr = np.array([1.0, 2.0, 3.0]) * u.m
+    # reduce keeps unit for add
+    r = np.add.reduce(arr)
+    assert isinstance(r, Quantity)
+    assert r.unit == u.m
+    # accumulate keeps unit and shape
+    acc = np.add.accumulate(arr)
+    assert isinstance(acc, Quantity)
+    assert acc.unit == u.m
+    assert acc.shape == arr.shape
+    # at modifies in place; for compatibility we only check it runs
+    a = arr.copy()
+    idx = np.array([0])
+    np.add.at(a, idx, 1 * u.m)
+    assert a[0].unit == u.m

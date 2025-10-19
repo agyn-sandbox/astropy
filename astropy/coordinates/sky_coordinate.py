@@ -867,20 +867,12 @@ class SkyCoord(ShapedLikeNDArray):
         )
 
     def __getattr__(self, attr):
-        """
-        Overrides getattr to return coordinates that this can be transformed
-        to, based on the alias attr in the primary transform graph.
-        """
         # If this attribute exists on the class (e.g., a subclass property),
         # try to access it via normal attribute lookup so that any
         # AttributeError raised by the descriptor propagates unchanged.
         for cls in type(self).mro():
             if attr in getattr(cls, "__dict__", {}):
                 return object.__getattribute__(self, attr)
-        """
-        Overrides getattr to return coordinates that this can be transformed
-        to, based on the alias attr in the primary transform graph.
-        """
         if "_sky_coord_frame" in self.__dict__:
             if self._is_name(attr):
                 return self  # Should this be a deepcopy of self?

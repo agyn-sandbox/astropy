@@ -57,7 +57,10 @@ def is_hdf5(origin, filepath, fileobj, *args, **kwargs):
     except ImportError:
         return False
     else:
-        return isinstance(args[0], (h5py.File, h5py.Group, h5py.Dataset))
+        # Only check args if provided to avoid IndexError when args is empty.
+        if args:
+            return isinstance(args[0], (h5py.File, h5py.Group, h5py.Dataset))
+        return False
 
 
 def read_table_hdf5(input, path=None, character_as_bytes=True):

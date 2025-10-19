@@ -60,16 +60,23 @@ def is_fits(origin, filepath, fileobj, *args, **kwargs):
         Returns `True` if the given file is a FITS file.
     """
     if fileobj is not None:
+        # Check the FITS signature from the file-like object
         pos = fileobj.tell()
         sig = fileobj.read(30)
         fileobj.seek(pos)
         return sig == FITS_SIGNATURE
     elif filepath is not None:
-        if filepath.lower().endswith(
-            (".fits", ".fits.gz", ".fit", ".fit.gz", ".fts", ".fts.gz")
-        ):
+        # Early decide based on file extension when a path is provided
+        fp = filepath.lower()
+        if fp.endswith((".fits", ".fits.gz", ".fit", ".fit.gz", ".fts", ".fts.gz")):
             return True
-    return isinstance(args[0], (HDUList, TableHDU, BinTableHDU, GroupsHDU))
+        else:
+            # Non-FITS-like paths should not fall through to args access
+            return False
+    # Fallback: object-type check; guard args to avoid IndexError
+    return bool(args) and isinstance(
+        args[0], (HDUList, TableHDU, BinTableHDU, GroupsHDU)
+    )
 
 
 def _decode_mixins(tbl):

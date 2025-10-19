@@ -57,10 +57,30 @@ class RST(FixedWidth):
     data_class = SimpleRSTData
     header_class = SimpleRSTHeader
 
-    def __init__(self):
-        super().__init__(delimiter_pad=None, bookend=False)
+    def __init__(self, header_rows=None):
+        """Initialize the RST writer.
+
+        Parameters
+        ----------
+        header_rows : list of str or None
+            Optional list of column attributes to include as header rows.
+            Examples: ["name"], ["name", "unit"]. When None, defaults to
+            ["name"].
+        """
+        # Pass through header_rows to FixedWidth to allow multi-row headers.
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
 
     def write(self, lines):
+        # Collect the core lines from FixedWidth writer which include:
+        #   [ header rows..., header/body separator, data rows... ]
         lines = super().write(lines)
-        lines = [lines[1]] + lines + [lines[1]]
+
+        # The simple RST table format requires a top rule and a bottom rule
+        # identical to the header/body separator. When multiple header rows
+        # are present, the separator appears after the last header row. Use
+        # the number of header rows to select that rule line.
+        header_rows = getattr(self.header, "header_rows", None) or ["name"]
+        sep_index = len(header_rows)
+        sep_line = lines[sep_index]
+        lines = [sep_line] + lines + [sep_line]
         return lines

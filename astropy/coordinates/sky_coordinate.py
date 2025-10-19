@@ -1,4 +1,5 @@
 import copy
+import inspect
 import operator
 import re
 import warnings
@@ -872,6 +873,21 @@ class SkyCoord(ShapedLikeNDArray):
         to, based on the alias attr in the primary transform graph.
         """
         if "_sky_coord_frame" in self.__dict__:
+            # If the attribute is actually defined on the class (e.g., a
+            # user-defined property on a subclass), try to resolve it via its
+            # descriptor so that any AttributeError raised inside the property
+            # getter is surfaced verbatim. Otherwise, fallback to the custom
+            # SkyCoord logic below may mask the original error with a misleading
+            # message referring to the property name itself (see gh-14096).
+            try:
+                cls_attr = inspect.getattr_static(self.__class__, attr)
+            except AttributeError:
+                cls_attr = None
+            # Only handle descriptors (like @property); regular attributes are
+            # not expected to end up here.
+            if hasattr(cls_attr, "__get__"):
+                return cls_attr.__get__(self, self.__class__)
+
             if self._is_name(attr):
                 return self  # Should this be a deepcopy of self?
 

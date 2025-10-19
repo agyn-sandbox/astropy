@@ -57,10 +57,34 @@ class RST(FixedWidth):
     data_class = SimpleRSTData
     header_class = SimpleRSTHeader
 
-    def __init__(self):
-        super().__init__(delimiter_pad=None, bookend=False)
+    def __init__(self, header_rows=None):
+        """RST writer/reader.
+
+        Parameters
+        ----------
+        header_rows : list of str, optional
+            List of column attributes to include as header rows prior to the
+            separator line. Typical values include "name", "unit",
+            "dtype", "format", or "description". If not provided the
+            default is ["name"].
+        """
+        # For RST simple tables we don't use delimiter padding and there are
+        # no bookend characters. Allow passing header_rows through to the
+        # FixedWidth base class so that multiple header rows (e.g. name + unit)
+        # are supported consistently with other fixed-width writers.
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
 
     def write(self, lines):
+        # Delegate to FixedWidth for composing header rows (including any
+        # requested extra header rows) and the single separator line that
+        # precedes data rows. Then wrap with the RST-required top and bottom
+        # border lines (copies of the separator line).
         lines = super().write(lines)
-        lines = [lines[1]] + lines + [lines[1]]
+        # The separator line is appended by FixedWidthData.write() after all
+        # header rows. Compute its index robustly even when there are multiple
+        # header rows.
+        header_rows = getattr(self.header, "header_rows", ["name"]) or []
+        sep_index = len(header_rows)
+        sep_line = lines[sep_index]
+        lines = [sep_line] + lines + [sep_line]
         return lines

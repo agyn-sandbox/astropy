@@ -42,6 +42,7 @@ def _find_all_structured_arrays(handle):
 
 
 def is_hdf5(origin, filepath, fileobj, *args, **kwargs):
+    # Prefer direct signature check when fileobj is available.
     if fileobj is not None:
         loc = fileobj.tell()
         try:
@@ -50,6 +51,7 @@ def is_hdf5(origin, filepath, fileobj, *args, **kwargs):
             fileobj.seek(loc)
         return signature == HDF5_SIGNATURE
     elif filepath is not None:
+        # Decide based on common HDF5 file suffixes; otherwise, do not match.
         return filepath.endswith((".hdf5", ".h5"))
 
     try:
@@ -57,7 +59,10 @@ def is_hdf5(origin, filepath, fileobj, *args, **kwargs):
     except ImportError:
         return False
     else:
-        return isinstance(args[0], (h5py.File, h5py.Group, h5py.Dataset))
+        # Only check args if provided to avoid IndexError when args is empty.
+        if args:
+            return isinstance(args[0], (h5py.File, h5py.Group, h5py.Dataset))
+        return False
 
 
 def read_table_hdf5(input, path=None, character_as_bytes=True):

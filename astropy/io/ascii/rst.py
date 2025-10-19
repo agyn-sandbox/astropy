@@ -77,9 +77,10 @@ class RST(FixedWidth):
 
         # The simple RST table format requires a top rule and a bottom rule
         # identical to the header/body separator. When multiple header rows
-        # are present, the separator appears after the last header row, so
-        # its index is equal to the number of header rows.
-        sep_index = len(getattr(self.data, "header_rows", ["name"]))
+        # are present, the separator appears after the last header row. Use
+        # the number of header rows to select that rule line.
+        header_rows = getattr(self.header, "header_rows", ["name"])  # fallback
+        sep_index = len(header_rows)
         sep_line = lines[sep_index]
         lines = [sep_line] + lines + [sep_line]
         return lines

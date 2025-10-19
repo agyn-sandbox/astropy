@@ -212,3 +212,19 @@ def test_write_with_header_rows_name_unit():
 ===== ========
 """,
     )
+
+
+
+def test_write_default_header_unchanged():
+    """Single-row header remains identical to previous behavior."""
+    tbl = QTable({"wave": [350, 950] * u.nm, "response": [0.7, 1.2] * u.count})
+    out = StringIO()
+    ascii.write(tbl, out, Writer=ascii.RST)
+    expected = """===== ========
+ wave response
+===== ========
+350.0      0.7
+950.0      1.2
+===== ========
+"""
+    assert_equal_splitlines(out.getvalue(), expected)

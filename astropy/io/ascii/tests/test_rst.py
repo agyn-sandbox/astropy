@@ -1,7 +1,11 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 
+
+
 from io import StringIO
 
+import astropy.units as u
+from astropy.table import QTable
 from astropy.io import ascii
 
 from .common import assert_almost_equal, assert_equal
@@ -183,5 +187,28 @@ Col1      Col2 Col3 Col4
  1.2   "hello"    1    a
  2.4 's worlds    2    2
 ==== ========= ==== ====
+""",
+    )
+
+
+
+def test_write_with_header_rows_name_unit():
+    """Write a SimpleRST table with multiple header rows (name, unit)."""
+    tbl = QTable({"wave": [350, 950] * u.nm, "response": [0.7, 1.2] * u.count})
+    out = StringIO()
+    ascii.write(tbl, out, Writer=ascii.RST, header_rows=["name", "unit"])
+    # Column widths are computed across header and data rows:
+    # wave column width = max(len('wave'), len('nm'), len('350.0'), len('950.0')) = 5
+    # response column width = max(len('response'), len('ct'), len('0.7'), len('1.2')) = 8
+    # Thus, the rule lines have 5 and 8 '=' characters respectively.
+    assert_equal_splitlines(
+        out.getvalue(),
+        """===== ========
+ wave response
+   nm       ct
+===== ========
+350.0      0.7
+950.0      1.2
+===== ========
 """,
     )

@@ -50,6 +50,28 @@ from astropy.utils import iers
 from astropy.utils.compat.optional_deps import HAS_SCIPY
 
 
+def test_regression_subclass_property_attribute_error():
+    """Ensure subclass properties surface inner AttributeError (gh-14096).
+
+    A SkyCoord subclass with a property that accesses a missing attribute
+    should raise an AttributeError referring to that missing attribute, not the
+    property name itself.
+    """
+
+    class CustomCoord(SkyCoord):
+        @property
+        def prop(self):
+            # Intentionally access a non-existent attribute to trigger error
+            return self.random_attr  # noqa: B018 - used to provoke AttributeError
+
+    c = CustomCoord("00h42m30s", "+41d12m00s", frame="icrs")
+    with pytest.raises(AttributeError) as exc:
+        _ = c.prop
+
+    # The message should point to 'random_attr', not 'prop'
+    assert "random_attr" in str(exc.value)
+
+
 def test_regression_5085():
     """
     PR #5085 was put in place to fix the following issue.

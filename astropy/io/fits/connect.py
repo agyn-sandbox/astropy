@@ -65,9 +65,11 @@ def is_fits(origin, filepath, fileobj, *args, **kwargs):
         fileobj.seek(pos)
         return sig == FITS_SIGNATURE
     elif filepath is not None:
-        # If a filepath is provided, decide based on suffix. If it does not
-        # look like a FITS file, explicitly return False to avoid falling
-        # through and incorrectly matching.
+        # Precedence: when a filepath is provided, decide based solely on
+        # filename/suffix. If it does not look like a FITS file, explicitly
+        # return False without inspecting args (even if args[0] is a FITS-like
+        # object). This avoids false positives when the target path is
+        # non-FITS (e.g., writing to 'x.ecsv').
         if filepath.lower().endswith(
             (".fits", ".fits.gz", ".fit", ".fit.gz", ".fts", ".fts.gz")
         ):

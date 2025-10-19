@@ -30,6 +30,7 @@ def is_votable(origin, filepath, fileobj, *args, **kwargs):
     """
     from . import is_votable
 
+    # Only support read-identification for VOTable.
     if origin == "read":
         if fileobj is not None:
             try:
@@ -39,7 +40,7 @@ def is_votable(origin, filepath, fileobj, *args, **kwargs):
             return result
         elif filepath is not None:
             return is_votable(filepath)
-        # Only inspect args if present; otherwise return False
+        # Only inspect args if present; otherwise return False.
         if args:
             return isinstance(args[0], (VOTableFile, VOTable))
         return False

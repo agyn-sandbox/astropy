@@ -64,12 +64,19 @@ def is_fits(origin, filepath, fileobj, *args, **kwargs):
         sig = fileobj.read(30)
         fileobj.seek(pos)
         return sig == FITS_SIGNATURE
+
     elif filepath is not None:
         if filepath.lower().endswith(
             (".fits", ".fits.gz", ".fit", ".fit.gz", ".fts", ".fts.gz")
         ):
             return True
-    return isinstance(args[0], (HDUList, TableHDU, BinTableHDU, GroupsHDU))
+    # If no fileobj/filepath match, fall back to type-based identification.
+    # Guard against empty args to avoid IndexError when called from
+    # identify_format with no positional args (e.g., write path given as string
+    # for non-FITS formats like ECSV). See gh-astropy#14309.
+    if args:
+        return isinstance(args[0], (HDUList, TableHDU, BinTableHDU, GroupsHDU))
+    return False
 
 
 def _decode_mixins(tbl):

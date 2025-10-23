@@ -6,7 +6,10 @@ from astropy.io.fits.verify import VerifyWarning
 def _value_field(card_str):
     """
     Extract the fixed-width value field (up to 20 characters) after '='.
-    For standard cards the field is exactly 20 characters and right-justified.
+    For standard FITS cards, the numeric value field is exactly 20 characters
+    and right-justified after '= '. HIERARCH cards may omit the space or use
+    a shortened value indicator; this helper is intended for standard cards
+    in these tests.
     """
     if '=' not in card_str:
         return ''
@@ -79,3 +82,21 @@ def test_hierarch_equal_sign_shortening():
     assert len(s) == 80
     # No VerifyWarning
     assert not any(isinstance(w.message, VerifyWarning) for w in rec)
+
+
+def test_negative_zero_preserved():
+    c = fits.Card('NEGZERO', -0.0)
+    s = str(c)
+    vf = _value_field(s)
+    # Ensure the sign and decimal point are preserved for -0.0
+    assert '-0.0' in vf
+
+
+def test_large_exponent_not_zero_padded():
+    c = fits.Card('BIG', 1e100)
+    s = str(c)
+    vf = _value_field(s)
+    # Exponent should be normalized with uppercase E, explicit sign, and
+    # no forced zero-padding beyond the natural width (E+100 here)
+    assert 'E+100' in vf
+    assert len(vf) <= 20

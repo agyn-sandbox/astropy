@@ -1301,8 +1301,10 @@ def _normalize_float_str(s):
     """
     Normalize a float string for FITS:
     - Uppercase exponent letter to 'E'
-    - Ensure exponent includes sign and at least two digits
-    - Ensure integer-like floats include a decimal point (e.g., '2.0')
+    - Exponent normalization: include a sign and at least two digits only
+      if abs(exponent) < 100; otherwise preserve full width without extra
+      padding zeros.
+    - Ensure integer-like floats include a decimal point (e.g., '2.0').
     """
     # Do not alter special floats
     sl = s.lower()
@@ -1312,21 +1314,29 @@ def _normalize_float_str(s):
     # Normalize exponent
     if "e" in s or "E" in s:
         s = s.replace("e", "E")
-        parts = s.split("E", 1)
-        mant = parts[0]
-        exp = parts[1] if len(parts) > 1 else ""
-        # Ensure sign is present
-        if not exp.startswith(("+", "-")):
+        mant, exp = s.split("E", 1)
+        # Remove spaces in exponent part and ensure a sign
+        exp = exp.replace(" ", "")
+        if not exp or exp[0] not in "+-":
             exp = "+" + exp
-        sign = exp[0]
-        digits = exp[1:]
-        # Defensive: strip any stray signs inside digits
-        if digits.startswith(("+", "-")):
-            digits = digits[1:]
-        # Pad to at least two digits
-        if len(digits) < 2:
-            digits = digits.rjust(2, "0")
-        s = mant + "E" + sign + digits
+        # Parse exponent as integer
+        try:
+            exp_int = int(exp)
+        except ValueError:
+            # Fallback: strip sign and parse digits only
+            sign_char = exp[0] if exp and exp[0] in "+-" else "+"
+            digits = exp[1:]
+            try:
+                exp_int = int(("-" if sign_char == "-" else "") + (digits or "0"))
+            except ValueError:
+                exp_int = 0
+        sign_char = "+" if exp_int >= 0 else "-"
+        abs_exp = abs(exp_int)
+        if abs_exp < 100:
+            digits_out = f"{abs_exp:02d}"
+        else:
+            digits_out = str(abs_exp)
+        s = mant + "E" + sign_char + digits_out
     # Ensure integer-like floats include a decimal point
     if ("E" not in s) and ("." not in s):
         s = s + ".0"
@@ -1336,9 +1346,10 @@ def _format_float(value):
     """
     Format a float according to FITS card value rules:
     - Prefer Python's minimal round-trip representation (str(value)) when it fits
-      within the 20-character numeric field; otherwise fall back to general
-      formatting with normalization and trimming.
-    - Normalize exponent to uppercase 'E' with sign and at least two digits.
+      within the 20-character numeric field; otherwise use scientific notation
+      with precision-based rounding.
+    - Exponent is normalized (uppercase 'E', sign, and at least two digits
+      only for abs(exp) < 100; otherwise preserve full width).
     - Ensure integer-like floats include a decimal point.
     - Special floats (NaN/Inf) behavior unchanged.
     """
@@ -1351,54 +1362,25 @@ def _format_float(value):
     # Preserve special float behavior unchanged
     if sl in ("nan", "inf", "-inf"):
         return s1
-    s1 = _normalize_float_str(s1)
-    if len(s1) <= 20:
-        return s1
+    s1n = _normalize_float_str(s1)
+    if len(s1n) <= 20:
+        return s1n
 
-    # Fallback to general formatting with normalization
-    s2 = f"{value:.16G}"
-    s2 = _normalize_float_str(s2)
-    if len(s2) <= 20:
-        return s2
+    # Use scientific notation with precision-based rounding
+    # Start with up to 16 digits after decimal and reduce until it fits
+    N = 16
+    while N >= 0:
+        sci = f"{value:.{N}E}"
+        sci_n = _normalize_float_str(sci)
+        if len(sci_n) <= 20:
+            return sci_n
+        N -= 1
 
-    # Still too long: trim to <= 20 chars, preserving exponent if present
-    if "E" in s2:
-        mant, exp_digits = s2.split("E", 1)
-        exp = "E" + exp_digits  # already normalized to sign+2 digits
-        avail = 20 - len(exp)
-        if avail <= 0:
-            # Last resort: hard truncate to 20 chars
-            out = (mant + exp)[:20]
-            # Avoid trailing bare dot
-            if out.endswith("."):
-                out = out[:-1] or "0"
-            return out
-        mant = mant[:avail]
-        if mant and mant[-1] == ".":
-            mant = mant[:-1] or "0"
-        out = mant + exp
-        if len(out) > 20:
-            out = out[:20]
-            if out.endswith("."):
-                out = out[:-1] or "0"
-        return out
-
-    # No exponent and still too long: truncate to 20, avoid trailing '.'
-    out = s2[:20]
+    # Fallback: if somehow still too long, take normalized minimal and truncate
+    out = s1n[:20]
     if out.endswith("."):
         out = out[:-1] or "0"
     return out
-
-
-    if str_len > 20:
-        idx = value_str.find("E")
-
-        if idx < 0:
-            value_str = value_str[:20]
-        else:
-            value_str = value_str[: 20 - (str_len - idx)] + value_str[idx:]
-
-    return value_str
 
 
 def _pad(input):

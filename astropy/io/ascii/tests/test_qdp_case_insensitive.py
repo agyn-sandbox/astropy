@@ -2,9 +2,8 @@ import numpy as np
 import pytest
 from io import StringIO
 from astropy.table import Table
- 
- 
- def _make_qdp_text(cmd1, cmd2):
+
+def _make_qdp_text(cmd1, cmd2):
      """
      Construct a minimal QDP text with two directives lines followed by
      data lines. We flag column 1 with TERR (two-sided errors) and
@@ -20,17 +19,15 @@ from astropy.table import Table
          "1 0.1 0.2 10 100 5\n"
          "2 0.11 0.22 20 200 6\n"
      )
- 
- 
- @pytest.mark.parametrize(
+@pytest.mark.parametrize(
      "cmds",
      [
          ("READ TERR 1", "READ SERR 3"),     # uppercase
          ("read terr 1", "read serr 3"),     # lowercase
          ("ReAd TeRr 1", "rEaD sErR 3"),     # mixed case
      ],
- )
- def test_qdp_command_case_insensitive(cmds):
+)
+def test_qdp_command_case_insensitive(cmds):
      text = _make_qdp_text(*cmds)
      # Explicit names: 'a', 'b', 'c'
      t = Table.read(StringIO(text), format="ascii.qdp", names=["a", "b", "c"])
@@ -51,8 +48,8 @@ from astropy.table import Table
      assert np.allclose(t["c"], [100.0, 200.0])
      assert np.allclose(t["c_err"], [5.0, 6.0])
  
- 
- def test_qdp_command_case_insensitive_no_names():
+
+def test_qdp_command_case_insensitive_no_names():
      # Lowercase directives to exercise case-insensitive detection
      text = _make_qdp_text("read terr 1", "read serr 3")
      t = Table.read(StringIO(text), format="ascii.qdp")

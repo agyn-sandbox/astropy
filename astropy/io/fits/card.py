@@ -1297,25 +1297,98 @@ def _format_value(value):
         return ""
 
 
-def _format_float(value):
-    """Format a floating number to make sure it gets the decimal point."""
-    value_str = f"{value:.16G}"
-    if "." not in value_str and "E" not in value_str:
-        value_str += ".0"
-    elif "E" in value_str:
-        # On some Windows builds of Python (and possibly other platforms?) the
-        # exponent is zero-padded out to, it seems, three digits.  Normalize
-        # the format to pad only to two digits.
-        significand, exponent = value_str.split("E")
-        if exponent[0] in ("+", "-"):
-            sign = exponent[0]
-            exponent = exponent[1:]
-        else:
-            sign = ""
-        value_str = f"{significand}E{sign}{int(exponent):02d}"
+def _normalize_float_str(s):
+    """
+    Normalize a float string for FITS:
+    - Uppercase exponent letter to 'E'
+    - Ensure exponent includes sign and at least two digits
+    - Ensure integer-like floats include a decimal point (e.g., '2.0')
+    """
+    # Do not alter special floats
+    sl = s.lower()
+    if sl in ("nan", "inf", "-inf"):
+        return s
 
-    # Limit the value string to at most 20 characters.
-    str_len = len(value_str)
+    # Normalize exponent
+    if "e" in s or "E" in s:
+        s = s.replace("e", "E")
+        parts = s.split("E", 1)
+        mant = parts[0]
+        exp = parts[1] if len(parts) > 1 else ""
+        # Ensure sign is present
+        if not exp.startswith(("+", "-")):
+            exp = "+" + exp
+        sign = exp[0]
+        digits = exp[1:]
+        # Defensive: strip any stray signs inside digits
+        if digits.startswith(("+", "-")):
+            digits = digits[1:]
+        # Pad to at least two digits
+        if len(digits) < 2:
+            digits = digits.rjust(2, "0")
+        s = mant + "E" + sign + digits
+    # Ensure integer-like floats include a decimal point
+    if ("E" not in s) and ("." not in s):
+        s = s + ".0"
+    return s
+
+def _format_float(value):
+    """
+    Format a float according to FITS card value rules:
+    - Prefer Python's minimal round-trip representation (str(value)) when it fits
+      within the 20-character numeric field; otherwise fall back to general
+      formatting with normalization and trimming.
+    - Normalize exponent to uppercase 'E' with sign and at least two digits.
+    - Ensure integer-like floats include a decimal point.
+    - Special floats (NaN/Inf) behavior unchanged.
+    """
+    # Primary candidate: minimal round-trip representation
+    try:
+        s1 = str(value)
+    except Exception:
+        s1 = f"{value:.16G}"
+    sl = s1.lower()
+    # Preserve special float behavior unchanged
+    if sl in ("nan", "inf", "-inf"):
+        return s1
+    s1 = _normalize_float_str(s1)
+    if len(s1) <= 20:
+        return s1
+
+    # Fallback to general formatting with normalization
+    s2 = f"{value:.16G}"
+    s2 = _normalize_float_str(s2)
+    if len(s2) <= 20:
+        return s2
+
+    # Still too long: trim to <= 20 chars, preserving exponent if present
+    if "E" in s2:
+        mant, exp_digits = s2.split("E", 1)
+        exp = "E" + exp_digits  # already normalized to sign+2 digits
+        avail = 20 - len(exp)
+        if avail <= 0:
+            # Last resort: hard truncate to 20 chars
+            out = (mant + exp)[:20]
+            # Avoid trailing bare dot
+            if out.endswith("."):
+                out = out[:-1] or "0"
+            return out
+        mant = mant[:avail]
+        if mant and mant[-1] == ".":
+            mant = mant[:-1] or "0"
+        out = mant + exp
+        if len(out) > 20:
+            out = out[:20]
+            if out.endswith("."):
+                out = out[:-1] or "0"
+        return out
+
+    # No exponent and still too long: truncate to 20, avoid trailing '.'
+    out = s2[:20]
+    if out.endswith("."):
+        out = out[:-1] or "0"
+    return out
+
 
     if str_len > 20:
         idx = value_str.find("E")

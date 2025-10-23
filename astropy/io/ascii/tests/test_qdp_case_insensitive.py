@@ -1,7 +1,7 @@
- import numpy as np
- import pytest
- from io import StringIO
- from astropy.table import Table
+import numpy as np
+import pytest
+from io import StringIO
+from astropy.table import Table
  
  
  def _make_qdp_text(cmd1, cmd2):
@@ -74,22 +74,52 @@
      assert np.allclose(t["col3_err"], [5.0, 6.0])
  
  
- def test_qdp_command_uppercase_unchanged():
-     # Uppercase as per existing behavior; ensure unchanged
-     text = _make_qdp_text("READ TERR 1", "READ SERR 3")
-     t = Table.read(StringIO(text), format="ascii.qdp", names=["a", "b", "c"])
- 
-     assert "a_perr" in t.colnames
-     assert "a_nerr" in t.colnames
-     assert "c_err" in t.colnames
-     assert np.allclose(t["a_perr"], [0.1, 0.11])
-     assert np.allclose(t["a_nerr"], [0.2, 0.22])
-     assert np.allclose(t["c_err"], [5.0, 6.0])
- PYTEST
- # Stage, commit, push
- git add -A
- git commit -m 'feat(ascii.qdp): Fix #26 accept case-insensitive QDP directives' -m 'Scope case-insensitivity to READ [TS]ERR commands via inline regex flag. Add minimal note comment.'
- git commit -m 'test(ascii.qdp): add tests for case-insensitive directives (SERR/TERR)' --allow-empty
- git push origin fix/qdp-case-insensitive-14365
- # Create PR targeting base branch astropy__astropy-14365
- gh pr create --repo 'agyn-sandbox/astropy' --base 'astropy__astropy-14365' --head 'fix/qdp-case-insensitive-14365' --title 'swev-id: astropy__astropy-14365 — ascii.qdp: accept case-insensitive QDP commands; add tests' --body 'Updated the ascii.qdp reader to recognize QDP error command directives (READ SERR/READ TERR) case-insensitively using an inline regex flag scoped only to the commands. Added tests covering uppercase, lowercase, and mixed-case inputs. No changes to data parsing or table splitting tokens. Fixes #26.'
+def test_qdp_command_uppercase_unchanged():
+    # Uppercase as per existing behavior; ensure unchanged
+    text = _make_qdp_text("READ TERR 1", "READ SERR 3")
+    t = Table.read(StringIO(text), format="ascii.qdp", names=["a", "b", "c"])
+
+    assert "a_perr" in t.colnames
+    assert "a_nerr" in t.colnames
+    assert "c_err" in t.colnames
+    assert np.allclose(t["a_perr"], [0.1, 0.11])
+    assert np.allclose(t["a_nerr"], [0.2, 0.22])
+    assert np.allclose(t["c_err"], [5.0, 6.0])
+
+
+def test_qdp_directives_with_tabs_and_spaces():
+    # Mix tabs and multiple spaces between tokens in directives
+    cmd1 = "READ\tTERR\t1\t"
+    cmd2 = "READ   SERR    3   "
+    text = _make_qdp_text(cmd1, cmd2)
+    t = Table.read(StringIO(text), format="ascii.qdp", names=["a", "b", "c"])
+
+    assert "a_perr" in t.colnames and "a_nerr" in t.colnames
+    assert "c_err" in t.colnames
+    assert np.allclose(t["a"], [1.0, 2.0])
+    assert np.allclose(t["a_perr"], [0.1, 0.11])
+    assert np.allclose(t["a_nerr"], [0.2, 0.22])
+    assert np.allclose(t["b"], [10.0, 20.0])
+    assert np.allclose(t["c_err"], [5.0, 6.0])
+
+
+def test_qdp_directives_with_trailing_whitespace_and_comment_line():
+    # Directives with trailing whitespace and a following comment line
+    cmd1 = "read terr 1   \t"
+    cmd2 = "READ SERR 3   "
+    text = (
+        f"{cmd1}\n"
+        f"{cmd2}\n"
+        "! post-directive comment\n"
+        "1 0.1 0.2 10 100 5\n"
+        "2 0.11 0.22 20 200 6\n"
+    )
+
+    t = Table.read(StringIO(text), format="ascii.qdp", names=["a", "b", "c"])
+
+    # Ensure comment line does not interfere with line-type detection
+    assert "a_perr" in t.colnames and "a_nerr" in t.colnames
+    assert "c_err" in t.colnames
+    assert np.allclose(t["a"], [1.0, 2.0])
+    assert np.allclose(t["b"], [10.0, 20.0])
+    assert np.allclose(t["c_err"], [5.0, 6.0])

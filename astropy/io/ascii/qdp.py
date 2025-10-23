@@ -60,7 +60,11 @@ def _line_type(line, delimiter=None):
     ValueError: Unrecognized QDP line...
     """
     _decimal_re = r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?"
-    _command_re = r"READ [TS]ERR(\s+[0-9]+)+"
+    # Make directive command detection case-insensitive so that lines like
+    # "read serr 1 2" or mixed-case variants are recognized.
+    # Use an inline case-insensitive flag scoped to the command pattern
+    # to avoid affecting other parts of the regex (e.g., data and NO tokens).
+    _command_re = r"(?i:READ [TS]ERR(\s+[0-9]+)+)"
 
     sep = delimiter
     if delimiter is None:

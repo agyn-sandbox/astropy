@@ -245,3 +245,46 @@ def test_get_lines_from_qdp(tmp_path):
         assert file_output[i] == line
         assert list_output[i] == line
         assert text_output[i] == line
+
+
+def test_lowercase_read_serr_simple():
+    import io
+    from astropy.table import Table
+
+    content = "read serr 1 2
+1 0.5 1 0.5
+"
+    t = Table.read(io.StringIO(content), format="ascii.qdp")
+    assert t.colnames == ["col1", "col1_err", "col2", "col2_err"]
+    assert len(t) == 1
+    assert t["col1"][0] == 1
+    assert t["col1_err"][0] == 0.5
+    assert t["col2"][0] == 1
+    assert t["col2_err"][0] == 0.5
+
+
+def test_mixed_case_read_terr_simple():
+    import io
+    from astropy.table import Table
+
+    content = "ReAd TeRr 1
+1 0.1 -0.2
+"
+    t = Table.read(io.StringIO(content), format="ascii.qdp")
+    assert t.colnames == ["col1", "col1_perr", "col1_nerr"]
+    assert len(t) == 1
+    assert t["col1"][0] == 1
+    assert t["col1_perr"][0] == 0.1
+    assert t["col1_nerr"][0] == -0.2
+
+
+def test_unrecognized_directive_still_errors():
+    import io
+    import pytest
+    from astropy.table import Table
+
+    content = "read xyz 1 2
+1 2
+"
+    with pytest.raises(ValueError):
+        Table.read(io.StringIO(content), format="ascii.qdp")

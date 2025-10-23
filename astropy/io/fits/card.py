@@ -1297,35 +1297,90 @@ def _format_value(value):
         return ""
 
 
+def _normalize_float_str(s):
+    """
+    Normalize a float string for FITS:
+    - Uppercase exponent letter to 'E'
+    - Exponent normalization: include a sign and at least two digits only
+      if abs(exponent) < 100; otherwise preserve full width without extra
+      padding zeros.
+    - Ensure integer-like floats include a decimal point (e.g., '2.0').
+    """
+    # Do not alter special floats
+    sl = s.lower()
+    if sl in ("nan", "inf", "-inf"):
+        return s
+
+    # Normalize exponent
+    if "e" in s or "E" in s:
+        s = s.replace("e", "E")
+        mant, exp = s.split("E", 1)
+        # Remove spaces in exponent part and ensure a sign
+        exp = exp.replace(" ", "")
+        if not exp or exp[0] not in "+-":
+            exp = "+" + exp
+        # Parse exponent as integer
+        try:
+            exp_int = int(exp)
+        except ValueError:
+            # Fallback: strip sign and parse digits only
+            sign_char = exp[0] if exp and exp[0] in "+-" else "+"
+            digits = exp[1:]
+            try:
+                exp_int = int(("-" if sign_char == "-" else "") + (digits or "0"))
+            except ValueError:
+                exp_int = 0
+        sign_char = "+" if exp_int >= 0 else "-"
+        abs_exp = abs(exp_int)
+        if abs_exp < 100:
+            digits_out = f"{abs_exp:02d}"
+        else:
+            digits_out = str(abs_exp)
+        s = mant + "E" + sign_char + digits_out
+    # Ensure integer-like floats include a decimal point
+    if ("E" not in s) and ("." not in s):
+        s = s + ".0"
+    return s
+
 def _format_float(value):
-    """Format a floating number to make sure it gets the decimal point."""
-    value_str = f"{value:.16G}"
-    if "." not in value_str and "E" not in value_str:
-        value_str += ".0"
-    elif "E" in value_str:
-        # On some Windows builds of Python (and possibly other platforms?) the
-        # exponent is zero-padded out to, it seems, three digits.  Normalize
-        # the format to pad only to two digits.
-        significand, exponent = value_str.split("E")
-        if exponent[0] in ("+", "-"):
-            sign = exponent[0]
-            exponent = exponent[1:]
-        else:
-            sign = ""
-        value_str = f"{significand}E{sign}{int(exponent):02d}"
+    """
+    Format a float according to FITS card value rules:
+    - Prefer Python's minimal round-trip representation (str(value)) when it fits
+      within the 20-character numeric field; otherwise use scientific notation
+      with precision-based rounding.
+    - Exponent is normalized (uppercase 'E', sign, and at least two digits
+      only for abs(exp) < 100; otherwise preserve full width).
+    - Ensure integer-like floats include a decimal point.
+    - Special floats (NaN/Inf) behavior unchanged.
+    """
+    # Primary candidate: minimal round-trip representation
+    try:
+        s1 = str(value)
+    except Exception:
+        s1 = f"{value:.16G}"
+    sl = s1.lower()
+    # Preserve special float behavior unchanged
+    if sl in ("nan", "inf", "-inf"):
+        return s1
+    s1n = _normalize_float_str(s1)
+    if len(s1n) <= 20:
+        return s1n
 
-    # Limit the value string to at most 20 characters.
-    str_len = len(value_str)
+    # Use scientific notation with precision-based rounding
+    # Start with up to 16 digits after decimal and reduce until it fits
+    N = 16
+    while N >= 0:
+        sci = f"{value:.{N}E}"
+        sci_n = _normalize_float_str(sci)
+        if len(sci_n) <= 20:
+            return sci_n
+        N -= 1
 
-    if str_len > 20:
-        idx = value_str.find("E")
-
-        if idx < 0:
-            value_str = value_str[:20]
-        else:
-            value_str = value_str[: 20 - (str_len - idx)] + value_str[idx:]
-
-    return value_str
+    # Fallback: if somehow still too long, take normalized minimal and truncate
+    out = s1n[:20]
+    if out.endswith("."):
+        out = out[:-1] or "0"
+    return out
 
 
 def _pad(input):

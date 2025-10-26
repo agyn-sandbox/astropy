@@ -520,6 +520,11 @@ class NDArithmeticMixin:
         elif self.mask is None and operand is not None:
             # Make a copy so there is no reference in the result.
             return deepcopy(operand.mask)
+        # Symmetric case: self has a mask but operand has no mask.
+        # Some mask handlers (e.g., np.bitwise_or) do not accept None, so
+        # return a copy of self.mask instead of calling the handler.
+        elif operand is not None and getattr(operand, "mask", None) is None:
+            return deepcopy(self.mask)
         elif operand is None:
             return deepcopy(self.mask)
         else:

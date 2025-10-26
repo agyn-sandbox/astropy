@@ -1299,6 +1299,82 @@ def test_psf_warning():
         ndd1.add(ndd1)
 
 
+def test_mask_bitwise_or_single_mask_scalar():
+    # NDDataRef with integer bitmask mask multiplied by scalar using np.bitwise_or
+    data = np.array([1, 2, 3])
+    mask = np.array([1, 2, 4], dtype=np.int32)
+    ndd = NDDataArithmetic(data, mask=mask)
+
+    # multiply by scalar operand without mask
+    res = ndd.multiply(2, handle_mask=np.bitwise_or)
+    assert_array_equal(res.mask, mask)
+    assert res.mask.dtype == mask.dtype
+
+
+def test_mask_bitwise_or_single_mask_other_none():
+    # One NDDataRef with mask, one without; bitwise_or handler should pick non-None mask
+    data = np.array([1, 2, 3])
+    mask = np.array([1, 2, 4], dtype=np.int16)
+    ndd1 = NDDataArithmetic(data, mask=mask)
+    ndd2 = NDDataArithmetic(data)
+
+    res12 = ndd1.multiply(ndd2, handle_mask=np.bitwise_or)
+    assert_array_equal(res12.mask, mask)
+    assert res12.mask.dtype == mask.dtype
+
+    res21 = ndd2.multiply(ndd1, handle_mask=np.bitwise_or)
+    assert_array_equal(res21.mask, mask)
+    assert res21.mask.dtype == mask.dtype
+
+
+def test_mask_bitwise_or_both_masks():
+    # both operands have integer masks; result equals np.bitwise_or of both
+    data = np.array([1, 2, 3])
+    mask1 = np.array([1, 2, 4], dtype=np.uint8)
+    mask2 = np.array([2, 1, 8], dtype=np.uint8)
+    ndd1 = NDDataArithmetic(data, mask=mask1)
+    ndd2 = NDDataArithmetic(data, mask=mask2)
+
+    res = ndd1.multiply(ndd2, handle_mask=np.bitwise_or)
+    assert_array_equal(res.mask, np.bitwise_or(mask1, mask2))
+    assert res.mask.dtype == mask1.dtype
+
+
+def test_mask_none_times_none_stays_none():
+    # neither operand has a mask; result mask is None
+    data = np.array([1, 2, 3])
+    ndd1 = NDDataArithmetic(data)
+    ndd2 = NDDataArithmetic(data)
+
+    res = ndd1.multiply(ndd2, handle_mask=np.bitwise_or)
+    assert res.mask is None
+
+
+def test_boolean_mask_logical_or_and_bitwise_or():
+    # boolean masks behave correctly for default logical_or and np.bitwise_or
+    data = np.array([1, 2, 3, 4])
+    m1 = np.array([True, False, True, False])
+    m2 = np.array([False, True, False, True])
+    ndd1 = NDDataArithmetic(data, mask=m1)
+    ndd2 = NDDataArithmetic(data, mask=m2)
+
+    # default handler is logical_or
+    res_default = ndd1.multiply(ndd2)
+    assert_array_equal(res_default.mask, np.logical_or(m1, m2))
+    assert res_default.mask.dtype == m1.dtype
+
+    # bitwise_or should be equivalent for booleans
+    res_bit = ndd1.multiply(ndd2, handle_mask=np.bitwise_or)
+    assert_array_equal(res_bit.mask, np.bitwise_or(m1, m2))
+    assert res_bit.mask.dtype == m1.dtype
+
+    # single-mask scenario: other has no mask
+    ndd3 = NDDataArithmetic(data)
+    res_single = ndd1.multiply(ndd3, handle_mask=np.bitwise_or)
+    assert_array_equal(res_single.mask, m1)
+    assert res_single.mask.dtype == m1.dtype
+
+
 def test_raise_method_not_supported():
     ndd1 = NDDataArithmetic(np.zeros(3), uncertainty=StdDevUncertainty(np.zeros(3)))
     ndd2 = NDDataArithmetic(np.ones(3), uncertainty=StdDevUncertainty(np.ones(3)))

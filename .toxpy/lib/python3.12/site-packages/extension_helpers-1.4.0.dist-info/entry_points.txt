@@ -1,2 +1,0 @@
-[setuptools.finalize_distribution_options]
-extension_helpers_get_extensions = extension_helpers:_finalize_distribution_hook

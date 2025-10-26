@@ -537,6 +537,25 @@ class InheritDocstrings(type):
                         val.__doc__ = super_method.__doc__
                         break
 
+        # Extend docstring inheritance to properties: if a subclass defines
+        # a property without a docstring, inherit the docstring from the
+        # first base class in MRO that defines the same attribute (property
+        # or function) with a non-None docstring.
+        for key, val in dct.items():
+            if isinstance(val, property) and is_public_member(key):
+                # Only act if subclass property has no docstring.
+                if val.__doc__ is None:
+                    for base in cls.__mro__[1:]:
+                        super_attr = getattr(base, key, None)
+                        if super_attr is not None:
+                            base_doc = getattr(super_attr, '__doc__', None)
+                            if base_doc is not None:
+                                # property.__doc__ is read-only; reconstruct
+                                # the property using subclass accessors and
+                                # the inherited docstring.
+                                dct[key] = property(val.fget, val.fset, val.fdel, base_doc)
+                                break
+
         super().__init__(name, bases, dct)
 
 

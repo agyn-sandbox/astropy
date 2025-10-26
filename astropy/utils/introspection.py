@@ -6,7 +6,7 @@
 import inspect
 import types
 import importlib
-from distutils.version import LooseVersion
+import re
 
 
 __all__ = ['resolve_name', 'minversion', 'find_current_module',
@@ -139,10 +139,269 @@ def minversion(module, version, inclusive=True, version_path='__version__'):
     else:
         have_version = resolve_name(module.__name__, version_path)
 
+    # Use a single selected version parser for both sides to ensure
+    # consistent comparison semantics across all paths.
+    parser = _get_version_parser()
+
+    left = parser(have_version)
+    right = parser(version)
+
     if inclusive:
-        return LooseVersion(have_version) >= LooseVersion(version)
+        return left >= right
     else:
-        return LooseVersion(have_version) > LooseVersion(version)
+        return left > right
+
+
+def _get_version_parser():
+    """
+    Return a callable that takes a version string and returns a comparable
+    object. Preference order:
+      1) packaging.version.parse
+      2) pkg_resources.parse_version
+      3) A safe LooseVersion-based parser as last resort
+
+    No new hard dependency is introduced; imports are performed at runtime.
+    """
+    # 1) Try packaging
+    try:
+        from packaging.version import parse as packaging_parse  # type: ignore
+        return packaging_parse
+    except Exception:
+        pass
+
+    # 2) Try pkg_resources from setuptools
+    try:
+        from pkg_resources import parse_version as pkg_parse  # type: ignore
+        return pkg_parse
+    except Exception:
+        pass
+
+    # 3) Fallback to a safe LooseVersion-based comparable wrapper
+    return _legacy_version_parse
+
+
+def _legacy_version_parse(vstr):
+    """
+    Parse a version string into a comparable object using distutils'
+    LooseVersion under the hood, with normalization and protections
+    against TypeError when comparing dev/pre-release strings.
+
+    This returns an object implementing rich comparisons.
+    """
+
+    class _LegacyVersion(object):
+        __slots__ = ('_raw', '_lv', '_norm')
+
+        def __init__(self, s):
+            self._raw = s
+            self._norm = _normalize_legacy_version(s)
+            # Use LooseVersion on normalized string if available
+            try:
+                from distutils.version import LooseVersion as _LV  # type: ignore
+            except Exception:
+                _LV = None
+            self._lv = _LV(self._norm) if _LV is not None else None
+
+        def _cmp(self, other):
+            if isinstance(other, _LegacyVersion):
+                # First try LooseVersion (fast path)
+                if self._lv is not None and other._lv is not None:
+                    try:
+                        if self._lv < other._lv:
+                            return -1
+                        elif self._lv > other._lv:
+                            return 1
+                        else:
+                            return 0
+                    except TypeError:
+                        # Fall back to a safer comparator that understands
+                        # dev/pre/post/local ordering roughly following PEP 440.
+                        pass
+                # If LooseVersion is unavailable or raised, use the safe comparator
+                return _compare_legacy(self._raw, other._raw)
+            return NotImplemented
+
+        def __lt__(self, other):
+            c = self._cmp(other)
+            return c is not NotImplemented and c < 0
+
+        def __le__(self, other):
+            c = self._cmp(other)
+            return c is not NotImplemented and c <= 0
+
+        def __eq__(self, other):
+            c = self._cmp(other)
+            return c is not NotImplemented and c == 0
+
+        def __ne__(self, other):
+            c = self._cmp(other)
+            return c is not NotImplemented and c != 0
+
+        def __gt__(self, other):
+            c = self._cmp(other)
+            return c is not NotImplemented and c > 0
+
+        def __ge__(self, other):
+            c = self._cmp(other)
+            return c is not NotImplemented and c >= 0
+
+        def __repr__(self):
+            return '<LegacyVersion {} (normalized: {})>'.format(self._raw, self._norm)
+
+    return _LegacyVersion(vstr)
+
+
+_RE_LEGACY_RELEASE = re.compile(r'^\s*v?(?P<release>\d+(?:\.\d+)*)', re.I)
+_RE_PRE = re.compile(r'(?P<pre>(a|alpha|b|beta|rc|c)\s*\d*)', re.I)
+_RE_DEV = re.compile(r'(?:\.|-)?(?P<dev>dev)\s*(?P<devnum>\d*)', re.I)
+_RE_POST = re.compile(r'(?:\.|-)?(?P<post>post)\s*(?P<postnum>\d+)', re.I)
+
+
+def _normalize_legacy_version(s):
+    """Normalize legacy version strings to reduce LooseVersion TypeError.
+
+    This inserts a missing dot before 'dev' (e.g., '1.14dev' -> '1.14.dev0'),
+    ensures dev has a numeric suffix, and lowercases.
+    """
+    v = str(s).strip().lower()
+    # Ensure 'dev' has a preceding separator and a numeric suffix
+    v = re.sub(r'(?i)(?<=\d)dev(?=\D|$)', '.dev0', v)
+    v = re.sub(r'(?i)dev(?=\D|$)', 'dev0', v)
+    # Normalize common separators
+    v = v.replace('-', '.')
+    return v
+
+
+def _split_release(s):
+    m = _RE_LEGACY_RELEASE.match(s)
+    if not m:
+        return (), s
+    release = tuple(int(p) for p in m.group('release').split('.'))
+    rest = s[m.end():]
+    return release, rest
+
+
+def _parse_legacy_components(s):
+    """Extract (release, pre_tag, pre_num, dev_num, post_num, has_local)
+    from a legacy version string s.
+    """
+    s = str(s).strip().lower()
+    # Local segment
+    has_local = '+' in s
+    if has_local:
+        s = s.split('+', 1)[0]
+
+    release, rest = _split_release(s)
+
+    # Pre-release (a/b/rc)
+    pre_tag = None
+    pre_num = 0
+    pm = _RE_PRE.search(rest)
+    if pm:
+        tag = pm.group('pre').strip()
+        if tag.startswith('alpha'):
+            pre_tag = 'a'
+        elif tag.startswith('beta'):
+            pre_tag = 'b'
+        elif tag.startswith('rc') or tag.startswith('c'):
+            pre_tag = 'rc'
+        elif tag.startswith('a'):
+            pre_tag = 'a'
+        elif tag.startswith('b'):
+            pre_tag = 'b'
+        # extract trailing number
+        mnum = re.search(r'(\d+)', tag)
+        if mnum:
+            pre_num = int(mnum.group(1))
+
+    # Dev release
+    dev_num = None
+    dm = _RE_DEV.search(rest)
+    if dm:
+        dev = dm.group('dev')
+        if dev:
+            dnum = dm.group('devnum')
+            dev_num = int(dnum) if dnum and dnum.isdigit() else 0
+
+    # Post release
+    post_num = None
+    pom = _RE_POST.search(rest)
+    if pom:
+        pnum = pom.group('postnum')
+        post_num = int(pnum) if pnum and pnum.isdigit() else 0
+
+    return release, pre_tag, pre_num, dev_num, post_num, has_local
+
+
+def _compare_legacy(a, b):
+    """Compare two legacy version strings with simple PEP 440-like rules.
+
+    Returns -1 if a<b, 0 if equal, 1 if a>b.
+    """
+    ra, pre_ta, pre_na, dev_a, post_a, loc_a = _parse_legacy_components(a)
+    rb, pre_tb, pre_nb, dev_b, post_b, loc_b = _parse_legacy_components(b)
+
+    # Compare release segments numerically with zero padding
+    la = len(ra)
+    lb = len(rb)
+    for i in range(max(la, lb)):
+        va = ra[i] if i < la else 0
+        vb = rb[i] if i < lb else 0
+        if va < vb:
+            return -1
+        if va > vb:
+            return 1
+
+    # Release equal: handle dev/pre/post/local ordering
+    # dev < pre < final < post < local
+
+    # Dev
+    if dev_a is not None or dev_b is not None:
+        if dev_a is None:
+            return 1  # a is final/pre/post/local, b is dev
+        if dev_b is None:
+            return -1
+        # both dev: compare numbers
+        if dev_a < dev_b:
+            return -1
+        if dev_a > dev_b:
+            return 1
+
+    # Pre-release (alpha/beta/rc) vs final
+    order = {'a': 0, 'b': 1, 'rc': 2}
+    if pre_ta is not None or pre_tb is not None:
+        if pre_ta is None:
+            return 1  # a is final/post/local, b is pre
+        if pre_tb is None:
+            return -1
+        # both pre: compare tag order then number
+        if order.get(pre_ta, -1) < order.get(pre_tb, -1):
+            return -1
+        if order.get(pre_ta, -1) > order.get(pre_tb, -1):
+            return 1
+        if pre_na < pre_nb:
+            return -1
+        if pre_na > pre_nb:
+            return 1
+
+    # Final vs post
+    if post_a is not None or post_b is not None:
+        if post_a is None:
+            return -1  # a is final (no post), b is post -> a<b
+        if post_b is None:
+            return 1   # a has post, b doesn't -> a>b
+        # both post: compare numbers
+        if post_a < post_b:
+            return -1
+        if post_a > post_b:
+            return 1
+
+    # Local label: only considered if everything else equal
+    if loc_a != loc_b:
+        # If only one has local, treat the one with local as greater
+        return 1 if loc_a and not loc_b else -1
+
+    return 0
 
 
 def find_current_module(depth=1, finddiff=False):

@@ -73,3 +73,39 @@ def test_minversion():
         assert minversion(test_module, version)
     for version in bad_versions:
         assert not minversion(test_module, version)
+
+
+def test_minversion_various_comparisons():
+    # Cover comparisons that previously raised TypeError or behaved incorrectly
+    from types import ModuleType
+
+    def mk(ver):
+        m = ModuleType(str('m'))
+        m.__version__ = ver
+        return m
+
+    # '1.14.3' >= '1.14dev' -> True (inclusive default)
+    assert minversion(mk('1.14.3'), '1.14dev') is True
+
+    # '1.14dev' >= '1.14.3' -> False
+    assert minversion(mk('1.14dev'), '1.14.3') is False
+
+    # Inclusive flag behavior on equal versions
+    assert minversion(mk('1.0'), '1.0', inclusive=True) is True
+    assert minversion(mk('1.0'), '1.0', inclusive=False) is False
+
+    # Pre-release behavior
+    assert minversion(mk('1.14rc1'), '1.14') is False
+    assert minversion(mk('1.14rc1'), '1.14rc1', inclusive=True) is True
+    assert minversion(mk('1.14rc1'), '1.14rc1', inclusive=False) is False
+
+    # Post-release
+    assert minversion(mk('1.0.post1'), '1.0') is True
+    assert minversion(mk('1.0'), '1.0.post1') is False
+
+    # Local version
+    assert minversion(mk('1.0+local.1'), '1.0') is True
+    assert minversion(mk('1.0'), '1.0+local.1') is False
+
+    # Legacy normalization (LooseVersion fallback normalization equivalence)
+    assert minversion(mk('1.14dev'), '1.14.dev0', inclusive=True) is True

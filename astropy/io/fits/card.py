@@ -858,8 +858,11 @@ class Card(_Verify):
                 if not m:
                     return kw, vc
 
-                value = m.group("strg") or ""
-                value = value.rstrip().replace("''", "'")
+                # Do not unescape doubled single-quotes here; treat each
+                # CONTINUE chunk verbatim (minus trailing spaces). Unescaping
+                # is handled at the overall value parsing stage to avoid
+                # losing quotes at chunk boundaries.
+                value = (m.group("strg") or "").rstrip()
                 if value and value[-1] == "&":
                     value = value[:-1]
                 values.append(value)

@@ -12,6 +12,9 @@ import re
 __all__ = ['resolve_name', 'minversion', 'find_current_module',
            'isinstancemethod']
 
+# Cache the selected version parser for performance; initialized lazily.
+_SELECTED_VERSION_PARSER = None
+
 
 __doctest_skip__ = ['find_current_module']
 
@@ -120,6 +123,24 @@ def minversion(module, version, inclusive=True, version_path='__version__'):
     >>> import astropy
     >>> minversion(astropy, '0.4.4')
     True
+
+    Notes
+    -----
+    Parser selection and semantics:
+    - The same version parser is used for both the module's version and the
+      target minimum version. The parser is selected in this order:
+        1) packaging.version.parse, if available.
+        2) pkg_resources.parse_version, if packaging is unavailable.
+        3) A legacy fallback using distutils.version.LooseVersion with
+           normalization and guarded comparisons.
+      The selected parser is cached for subsequent calls for performance.
+    - Version ordering semantics follow PEP 440 where applicable:
+      dev < pre (a/b/rc) < final < post; a version with a local segment
+      (e.g., +local.1) is treated as greater than the same public version.
+      The legacy fallback approximates these rules and normalizes strings
+      like '1.14dev' to '1.14.dev0' to avoid TypeError with LooseVersion.
+    - inclusive=True means the requirement is satisfied when have == target
+      (i.e., >=), while inclusive=False enforces strictly greater than (>).
     """
     if isinstance(module, types.ModuleType):
         module_name = module.__name__
@@ -143,8 +164,12 @@ def minversion(module, version, inclusive=True, version_path='__version__'):
     # consistent comparison semantics across all paths.
     parser = _get_version_parser()
 
-    left = parser(have_version)
-    right = parser(version)
+    try:
+        left = parser(have_version)
+        right = parser(version)
+    except Exception:
+        # If parsing fails for any reason, conservatively return False
+        return False
 
     if inclusive:
         return left >= right
@@ -162,22 +187,29 @@ def _get_version_parser():
 
     No new hard dependency is introduced; imports are performed at runtime.
     """
+    global _SELECTED_VERSION_PARSER
+    if _SELECTED_VERSION_PARSER is not None:
+        return _SELECTED_VERSION_PARSER
+
     # 1) Try packaging
     try:
         from packaging.version import parse as packaging_parse  # type: ignore
-        return packaging_parse
-    except Exception:
+        _SELECTED_VERSION_PARSER = packaging_parse
+        return _SELECTED_VERSION_PARSER
+    except ImportError:
         pass
 
     # 2) Try pkg_resources from setuptools
     try:
         from pkg_resources import parse_version as pkg_parse  # type: ignore
-        return pkg_parse
-    except Exception:
+        _SELECTED_VERSION_PARSER = pkg_parse
+        return _SELECTED_VERSION_PARSER
+    except ImportError:
         pass
 
     # 3) Fallback to a safe LooseVersion-based comparable wrapper
-    return _legacy_version_parse
+    _SELECTED_VERSION_PARSER = _legacy_version_parse
+    return _SELECTED_VERSION_PARSER
 
 
 def _legacy_version_parse(vstr):
@@ -185,6 +217,14 @@ def _legacy_version_parse(vstr):
     Parse a version string into a comparable object using distutils'
     LooseVersion under the hood, with normalization and protections
     against TypeError when comparing dev/pre-release strings.
+
+    Normalization strategy and known differences:
+    - Strings such as '1.14dev' are normalized to '1.14.dev0' to ensure
+      consistent tokenization by LooseVersion.
+    - Hyphens are converted to dots.
+    - This comparator approximates PEP 440 ordering (dev < pre < final < post
+      and a local segment treated as greater when all else equal), but is not
+      a full implementation of PEP 440.
 
     This returns an object implementing rich comparisons.
     """

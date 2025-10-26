@@ -109,3 +109,57 @@ def test_minversion_various_comparisons():
 
     # Legacy normalization (LooseVersion fallback normalization equivalence)
     assert minversion(mk('1.14dev'), '1.14.dev0', inclusive=True) is True
+
+
+def test_minversion_fallback_pkg_resources(monkeypatch):
+    # Force packaging missing to use pkg_resources.parse_version
+    import sys
+    # Temporarily remove packaging
+    saved_packaging = sys.modules.pop('packaging', None)
+    try:
+        from types import ModuleType
+
+        def mk(ver):
+            m = ModuleType(str('m'))
+            m.__version__ = ver
+            return m
+
+        # Behavior under pkg_resources path
+        assert minversion(mk('1.14.3'), '1.14dev') is True
+        assert minversion(mk('1.14dev'), '1.14.3') is False
+        assert minversion(mk('1.0+local.1'), '1.0') is True
+        # Invalid version inputs should not raise and return False
+        assert minversion(mk('invalid'), '1.0') is False
+        assert minversion(mk('1.0'), 'invalid') is False
+    finally:
+        if saved_packaging is not None:
+            sys.modules['packaging'] = saved_packaging
+
+
+def test_minversion_fallback_legacy(monkeypatch):
+    # Force both packaging and pkg_resources missing to use legacy comparator
+    import sys
+    saved_packaging = sys.modules.pop('packaging', None)
+    saved_pkg_resources = sys.modules.pop('pkg_resources', None)
+    try:
+        from types import ModuleType
+
+        def mk(ver):
+            m = ModuleType(str('m'))
+            m.__version__ = ver
+            return m
+
+        assert minversion(mk('1.14.3'), '1.14dev') is True
+        assert minversion(mk('1.14dev'), '1.14.3') is False
+        # Pre-release and post/local behavior
+        assert minversion(mk('1.14rc1'), '1.14') is False
+        assert minversion(mk('1.0.post1'), '1.0') is True
+        assert minversion(mk('1.0+local.1'), '1.0') is True
+        # Invalid version inputs should not raise and return False
+        assert minversion(mk('invalid'), '1.0') is False
+        assert minversion(mk('1.0'), 'invalid') is False
+    finally:
+        if saved_packaging is not None:
+            sys.modules['packaging'] = saved_packaging
+        if saved_pkg_resources is not None:
+            sys.modules['pkg_resources'] = saved_pkg_resources

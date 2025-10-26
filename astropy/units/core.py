@@ -1710,7 +1710,25 @@ class UnrecognizedUnit(IrreducibleUnit):
         _unrecognized_operator
 
     def __eq__(self, other):
-        other = Unit(other, parse_strict='silent')
+        # Mirror UnitBase.__eq__ behavior for invalid inputs.
+        # Identity check
+        if self is other:
+            return True
+
+        # Attempt to parse/convert "other" into a Unit; return False if
+        # this fails (e.g., for None, numbers without unit context, or
+        # non-unit-like objects).
+        try:
+            other = Unit(other, parse_strict='silent')
+        except (ValueError, UnitsError, TypeError):
+            return False
+
+        # Other is unit-like, but the test below requires it is a UnitBase
+        # instance; if it is not, give up (so that other can try).
+        if not isinstance(other, UnitBase):
+            return NotImplemented
+
+        # Only equal to another UnrecognizedUnit with the same name.
         return isinstance(other, UnrecognizedUnit) and self.name == other.name
 
     def __ne__(self, other):

@@ -16,7 +16,7 @@ except Exception:
     # Fallback for environments where setuptools.dep_util is unavailable.
     # Provides minimal newer_group functionality: returns True if any source
     # is newer than target or target does not exist.
-    def newer_group(sources, target, missing="newer"):
+    def newer_group(sources, target):
         import os
         try:
             t_mtime = os.path.getmtime(target)

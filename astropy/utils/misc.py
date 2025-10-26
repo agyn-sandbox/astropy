@@ -558,7 +558,12 @@ class InheritDocstrings(type):
                                 # the property using subclass accessors and
                                 # the inherited docstring. Use type(val) to
                                 # preserve any property subclass.
-                                dct[key] = type(val)(val.fget, val.fset, val.fdel, base_doc)
+                                # Update the class attribute, not the original
+                                # class dict, since __init__ runs after class
+                                # creation. Reconstruct the property to set
+                                # the inherited docstring while preserving
+                                # accessors and any property subclass.
+                                setattr(cls, key, type(val)(val.fget, val.fset, val.fdel, base_doc))
                                 break
 
         super().__init__(name, bases, dct)

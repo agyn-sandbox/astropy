@@ -546,14 +546,19 @@ class InheritDocstrings(type):
                 # Only act if subclass property has no docstring.
                 if val.__doc__ is None:
                     for base in cls.__mro__[1:]:
-                        super_attr = getattr(base, key, None)
-                        if super_attr is not None:
-                            base_doc = getattr(super_attr, '__doc__', None)
+                        # Prefer raw attribute lookup to avoid descriptor resolution.
+                        base_attr = base.__dict__.get(key)
+                        if base_attr is None:
+                            continue
+                        # Only inherit docs from a property or a callable.
+                        if isinstance(base_attr, property) or callable(base_attr):
+                            base_doc = getattr(base_attr, '__doc__', None)
                             if base_doc is not None:
                                 # property.__doc__ is read-only; reconstruct
                                 # the property using subclass accessors and
-                                # the inherited docstring.
-                                dct[key] = property(val.fget, val.fset, val.fdel, base_doc)
+                                # the inherited docstring. Use type(val) to
+                                # preserve any property subclass.
+                                dct[key] = type(val)(val.fget, val.fset, val.fdel, base_doc)
                                 break
 
         super().__init__(name, bases, dct)

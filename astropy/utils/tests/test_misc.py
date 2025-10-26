@@ -95,15 +95,100 @@ def test_inherit_docstrings_property():
         def value(self):
             "Base value docstring"
             return 1
-
+    if Base.value.__doc__ is None:
+        pytest.skip("docstrings stripped by -OO")
     class Subclass(Base):
         @property
         def value(self):
             # No docstring; should inherit from Base.value
             return 2
+    assert Subclass.value.__doc__ == "Base value docstring"
 
-    if Base.value.__doc__ is not None:
-        assert Subclass.value.__doc__ == "Base value docstring"
+
+def test_inherit_docstrings_property_readwrite():
+    class Base(metaclass=misc.InheritDocstrings):
+        @property
+        def value(self):
+            "RW doc"
+            return getattr(self, "_v", 0)
+        @value.setter
+        def value(self, v):
+            self._v = v
+    if Base.value.__doc__ is None:
+        pytest.skip("docstrings stripped by -OO")
+    class Sub(Base):
+        @property
+        def value(self):
+            return getattr(self, "_v", 0)
+        @value.setter
+        def value(self, v):
+            self._v = v
+    s = Sub()
+    s.value = 3
+    assert s.value == 3
+    assert Sub.value.__doc__ == "RW doc"
+
+
+def test_inherit_docstrings_property_mro():
+    class A(metaclass=misc.InheritDocstrings):
+        @property
+        def x(self):
+            "doc from A"
+            return 1
+    class B:
+        @property
+        def x(self):
+            "doc from B"
+            return 2
+    if A.x.__doc__ is None or B.x.__doc__ is None:
+        pytest.skip("docstrings stripped by -OO")
+    class C(A, B):
+        @property
+        def x(self):
+            return 3
+    assert C.x.__doc__ == "doc from A"
+
+
+def test_inherit_docstrings_property_private_untouched():
+    class Base(metaclass=misc.InheritDocstrings):
+        @property
+        def _hidden(self):
+            "hidden doc"
+            return 1
+    class Sub(Base):
+        @property
+        def _hidden(self):
+            return 2
+    # Should not inherit because it is private (single underscore)
+    assert Sub._hidden.__doc__ is None
+
+
+def test_inherit_docstrings_property_subclass_doc_preserved():
+    class Base(metaclass=misc.InheritDocstrings):
+        @property
+        def y(self):
+            "base doc"
+            return 1
+    class Sub(Base):
+        @property
+        def y(self):
+            "sub doc"
+            return 2
+    assert Sub.y.__doc__ == "sub doc"
+
+
+def test_inherit_docstrings_property_from_method():
+    class Base(metaclass=misc.InheritDocstrings):
+        def z(self):
+            "method doc"
+            return 1
+    if Base.z.__doc__ is None:
+        pytest.skip("docstrings stripped by -OO")
+    class Sub(Base):
+        @property
+        def z(self):
+            return 2
+    assert Sub.z.__doc__ == "method doc"
 
 
 def test_set_locale():

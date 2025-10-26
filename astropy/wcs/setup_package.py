@@ -10,7 +10,19 @@ from os.path import join
 
 import numpy
 from setuptools import Extension
-from setuptools.dep_util import newer_group
+try:
+    from setuptools.dep_util import newer_group
+except Exception:
+    # Fallback for environments where setuptools.dep_util is unavailable.
+    # Provides minimal newer_group functionality: returns True if any source
+    # is newer than target or target does not exist.
+    def newer_group(sources, target):
+        import os
+        try:
+            t_mtime = os.path.getmtime(target)
+        except OSError:
+            return True
+        return any(os.path.getmtime(src) > t_mtime for src in sources)
 
 from extension_helpers import get_compiler, import_file, pkg_config, write_if_different
 

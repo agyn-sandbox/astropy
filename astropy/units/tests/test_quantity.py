@@ -170,6 +170,62 @@ class TestQuantityCreation:
             q_dt = u.Quantity(dt(1), u.m)
             assert q_dt.dtype == np.dtype(dt)
 
+    def test_preserve_complex_and_integer_bool_behavior(self):
+        # Complex dtypes preserved
+        qc64 = u.Quantity(np.complex64(1+2j), u.km)
+        assert qc64.dtype == np.complex64
+        qc128 = u.Quantity(np.array([1+2j], dtype=np.complex128), u.m)
+        assert qc128.dtype == np.complex128
+        # int and bool promoted to float by default
+        qi = u.Quantity(np.int32(1), u.km)
+        assert qi.dtype == np.float64
+        qb = u.Quantity(np.bool_(True), u.s)
+        assert qb.dtype == np.float64
+
+    def test_object_and_structured_dtype_behavior(self):
+        # Numeric object becomes float by default
+        q_obj_num = u.Quantity(np.array(1, dtype=object), u.m)
+        assert q_obj_num.dtype == np.float64
+        # Non-numeric object should raise TypeError
+        with pytest.raises(TypeError):
+            u.Quantity(np.array({'a': 1}, dtype=object), u.m)
+        # Structured dtype should remain untouched (dtype.fields truthy)
+        dt = np.dtype([('x', np.float16)])
+        arr_struct = np.array([(1.0,)], dtype=dt)
+        q_struct = u.Quantity(arr_struct, u.s)
+        assert q_struct.dtype == dt
+
+    def test_quantity_input_copy_flags_preserve_dtype(self):
+        q16 = np.float16(1) * u.m
+        # default copy=True preserves dtype
+        q_copy = u.Quantity(q16)
+        assert q_copy.dtype == np.float16
+        # copy=False returns view; dtype unchanged
+        q_view = u.Quantity(q16, copy=False)
+        assert q_view.dtype == np.float16
+        # complex quantity
+        qc = np.complex64(1+2j) * u.m
+        assert u.Quantity(qc).dtype == np.complex64
+        assert u.Quantity(qc, copy=False).dtype == np.complex64
+
+    def test_longdouble_preserved_if_available(self):
+        ld = np.dtype('longdouble')
+        if ld.itemsize > np.dtype('float64').itemsize:
+            q = u.Quantity(ld.type(1), u.m)
+            assert q.dtype == ld
+        else:
+            pytest.skip('longdouble not wider than float64 on this platform')
+
+    def test_conversion_keeps_inexact_class(self):
+        # After construction, converting to unit with non-integer scale
+        # should keep floating/complex class (not necessarily bit-width)
+        qf16 = np.float16(2) * u.m
+        qf16_km = qf16.to(u.km)
+        assert np.issubdtype(qf16_km.dtype, np.floating)
+        qc = np.complex64(1+2j) * u.m
+        qc_km = qc.to(u.km)
+        assert np.issubdtype(qc_km.dtype, np.complexfloating)
+
     def test_copy(self):
 
         # By default, a new quantity is constructed, but not if copy=False

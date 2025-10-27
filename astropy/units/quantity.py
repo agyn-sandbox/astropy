@@ -296,8 +296,10 @@ class Quantity(np.ndarray, metaclass=InheritDocstrings):
                 if not copy:
                     return value
 
-                if not (np.can_cast(np.float32, value.dtype) or
-                        value.dtype.fields):
+                # Preserve float-like dtypes; previously used np.can_cast(np.float32, value.dtype)
+                # which incorrectly upcasted float16 on construction. Use a direct
+                # floating-kind predicate to avoid unnecessary upcasting.
+                if not (value.dtype.kind == 'f' or value.dtype.fields):
                     dtype = float
 
             return np.array(value, dtype=dtype, copy=copy, order=order,
@@ -377,8 +379,9 @@ class Quantity(np.ndarray, metaclass=InheritDocstrings):
                             "Numpy numeric type.")
 
         # by default, cast any integer, boolean, etc., to float
-        if dtype is None and (not (np.can_cast(np.float32, value.dtype)
-                                   or value.dtype.fields)
+        # Preserve float-like inputs (including float16) at construction.
+        # Use dtype.kind == 'f' to detect floating types instead of can_cast proxy.
+        if dtype is None and ((not (value.dtype.kind == 'f' or value.dtype.fields))
                               or value.dtype.kind == 'O'):
             value = value.astype(float)
 

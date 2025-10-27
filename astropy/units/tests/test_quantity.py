@@ -150,6 +150,26 @@ class TestQuantityCreation:
         q5 = u.Quantity(decimal.Decimal('10.25'), u.m, dtype=object)
         assert q5.dtype == object
 
+    def test_preserve_float16_dtype_construction(self):
+        # float16 scalar preserves dtype
+        q = u.Quantity(np.float16(1), u.km)
+        assert q.dtype == np.float16
+        # float16 array preserves dtype
+        arr = np.array([1, 2], dtype=np.float16)
+        q_arr = u.Quantity(arr, u.m)
+        assert q_arr.dtype == np.float16
+        # explicit dtype override still works
+        q_override = u.Quantity(np.float16(1), u.m, dtype=np.float32)
+        assert q_override.dtype == np.float32
+        # edge cases preserve dtype at construction
+        for val in [np.float16(0), np.float16('nan'), np.float16('inf'), np.float16('-2')]:
+            q_edge = u.Quantity(val, u.s)
+            assert q_edge.dtype == np.float16
+        # dtype preserved for other floats
+        for dt in [np.float32, np.float64]:
+            q_dt = u.Quantity(dt(1), u.m)
+            assert q_dt.dtype == np.dtype(dt)
+
     def test_copy(self):
 
         # By default, a new quantity is constructed, but not if copy=False

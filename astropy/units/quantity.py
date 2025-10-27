@@ -376,13 +376,20 @@ class Quantity(np.ndarray, metaclass=InheritDocstrings):
             raise TypeError("The value must be a valid Python or "
                             "Numpy numeric type.")
 
-        # by default, cast integer/boolean/object to float; preserve float kinds
+        # By default, cast integer/boolean/object to float; preserve floating,
+        # complex, and structured/record dtypes. We do not attempt to cast
+        # structured types (value.dtype.fields is not None or kind == 'V').
+        # This keeps np.float16 (and other float/complex) dtypes on construction
+        # while maintaining existing promotion for ints/bools/objects.
         if dtype is None:
-            kind = value.dtype.kind
-            # ints (i), unsigned (u), booleans (b), and object (O) get cast
-            # to float by default to maintain compatibility with existing
-            # behavior, while preserving float (f), complex (c), etc.
-            if kind in ('i', 'u', 'b') or kind == 'O':
+            # If structured (record) dtype, preserve as-is.
+            if value.dtype.fields or value.dtype.kind == 'V':
+                pass
+            # Otherwise apply readable issubdtype checks for casting.
+            elif (np.issubdtype(value.dtype, np.integer)
+                  or np.issubdtype(value.dtype, np.unsignedinteger)
+                  or np.issubdtype(value.dtype, np.bool_)
+                  or value.dtype.kind == 'O'):
                 value = value.astype(float)
 
         value = value.view(cls)

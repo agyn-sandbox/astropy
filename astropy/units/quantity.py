@@ -376,11 +376,14 @@ class Quantity(np.ndarray, metaclass=InheritDocstrings):
             raise TypeError("The value must be a valid Python or "
                             "Numpy numeric type.")
 
-        # by default, cast any integer, boolean, etc., to float
-        if dtype is None and (not (np.can_cast(np.float32, value.dtype)
-                                   or value.dtype.fields)
-                              or value.dtype.kind == 'O'):
-            value = value.astype(float)
+        # by default, cast integer/boolean/object to float; preserve float kinds
+        if dtype is None:
+            kind = value.dtype.kind
+            # ints (i), unsigned (u), booleans (b), and object (O) get cast
+            # to float by default to maintain compatibility with existing
+            # behavior, while preserving float (f), complex (c), etc.
+            if kind in ('i', 'u', 'b') or kind == 'O':
+                value = value.astype(float)
 
         value = value.view(cls)
         value._set_unit(value_unit)

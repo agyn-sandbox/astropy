@@ -8,6 +8,21 @@ import types
 import importlib
 from distutils.version import LooseVersion
 
+# Version parsing fallback chain:
+# 1) packaging.version.parse (PEP 440 compliant)
+# 2) pkg_resources.parse_version (setuptools)
+# 3) distutils.version.LooseVersion (last resort; non-PEP 440)
+#
+# Note: We intentionally do not add a hard dependency on packaging.
+# All imports are optional. Normalize inputs to str before parsing.
+try:  # Preferred PEP 440–compliant parser
+    from packaging.version import parse as _parse_version
+except Exception:  # packaging not available
+    try:
+        from pkg_resources import parse_version as _parse_version
+    except Exception:  # setuptools not available; fallback to LooseVersion
+        _parse_version = None
+
 
 __all__ = ['resolve_name', 'minversion', 'find_current_module',
            'isinstancemethod']
@@ -139,10 +154,17 @@ def minversion(module, version, inclusive=True, version_path='__version__'):
     else:
         have_version = resolve_name(module.__name__, version_path)
 
-    if inclusive:
-        return LooseVersion(have_version) >= LooseVersion(version)
+    # Normalize to string before parsing
+    have_str = str(have_version)
+    req_str = str(version)
+
+    if _parse_version is not None:
+        have_parsed = _parse_version(have_str)
+        req_parsed = _parse_version(req_str)
+        return have_parsed >= req_parsed if inclusive else have_parsed > req_parsed
     else:
-        return LooseVersion(have_version) > LooseVersion(version)
+        # Last resort: LooseVersion (non-PEP 440 semantics)
+        return LooseVersion(have_str) >= LooseVersion(req_str) if inclusive else LooseVersion(have_str) > LooseVersion(req_str)
 
 
 def find_current_module(depth=1, finddiff=False):

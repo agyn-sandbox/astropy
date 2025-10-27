@@ -165,7 +165,12 @@ class TestQuantityCreation:
         q2 = u.Quantity(arr, u.m)
         assert q2.dtype == np.float16
 
-    @pytest.mark.parametrize('ft', [np.float16, np.float32, np.float64])
+    # Include float128 if available in NumPy build
+    float_types = [np.float16, np.float32, np.float64]
+    if hasattr(np, 'float128'):
+        float_types.append(np.float128)
+
+    @pytest.mark.parametrize('ft', float_types)
     def test_quantity_from_floatX_preserves_dtype(self, ft):
         # Scalars
         q = ft(3) * u.s

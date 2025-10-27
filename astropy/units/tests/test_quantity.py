@@ -150,6 +150,46 @@ class TestQuantityCreation:
         q5 = u.Quantity(decimal.Decimal('10.25'), u.m, dtype=object)
         assert q5.dtype == object
 
+    def test_quantity_from_float16_scalar_preserves_dtype(self):
+        # Ensure np.float16 scalar preserves dtype through unit multiplication and constructor
+        q = np.float16(1) * u.km
+        assert q.dtype == np.float16
+        q2 = u.Quantity(np.float16(1), u.km)
+        assert q2.dtype == np.float16
+
+    def test_quantity_from_float16_array_preserves_dtype(self):
+        # Ensure np.float16 array preserves dtype through unit multiplication and constructor
+        arr = np.array([1, 2, 3], dtype=np.float16)
+        q = arr * u.m
+        assert q.dtype == np.float16
+        q2 = u.Quantity(arr, u.m)
+        assert q2.dtype == np.float16
+
+    @pytest.mark.parametrize('ft', [np.float16, np.float32, np.float64])
+    def test_quantity_from_floatX_preserves_dtype(self, ft):
+        # Scalars
+        q = ft(3) * u.s
+        assert q.dtype == ft
+        q2 = u.Quantity(ft(3), u.s)
+        assert q2.dtype == ft
+        # Arrays
+        arr = np.array([1, 2], dtype=ft)
+        qa = arr * u.s
+        assert qa.dtype == ft
+        qa2 = u.Quantity(arr, u.s)
+        assert qa2.dtype == ft
+
+    def test_integer_bool_promote_to_float(self):
+        assert (np.int16(1) * u.km).dtype == np.float64
+        assert u.Quantity(np.bool_(True), u.dimensionless_unscaled).dtype == np.float64
+
+    def test_float16_ufunc_behavior(self):
+        q = np.array([1, 4], dtype=np.float16) * u.m
+        r = np.sqrt(q / u.m)
+        assert r.dtype == np.float16
+        s = (q + q)
+        assert s.dtype == np.float16
+
     def test_copy(self):
 
         # By default, a new quantity is constructed, but not if copy=False

@@ -77,6 +77,8 @@ astropy.uncertainty
 astropy.units
 ^^^^^^^^^^^^^
 
+* Quantity: Preserve float16/complex dtype on construction and unit multiplication when dtype is not explicitly provided; previously values like float16 were upcast to float64. (gh-62, gh-63)
+
 astropy.utils
 ^^^^^^^^^^^^^
 

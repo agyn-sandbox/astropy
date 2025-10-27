@@ -376,10 +376,12 @@ class Quantity(np.ndarray, metaclass=InheritDocstrings):
             raise TypeError("The value must be a valid Python or "
                             "Numpy numeric type.")
 
-        # by default, cast any integer, boolean, etc., to float
-        if dtype is None and (not (np.can_cast(np.float32, value.dtype)
-                                   or value.dtype.fields)
-                              or value.dtype.kind == 'O'):
+        # By default, cast any integer, boolean, etc., to float.
+        # Preserve inexact types (floating and complex floating) unless dtype is explicitly given.
+        # This avoids unintended promotion of e.g. float16 to float64.
+        is_inexact = np.issubdtype(value.dtype, np.inexact)
+        if dtype is None and ((not is_inexact and not value.dtype.fields) or
+                               value.dtype.kind == 'O'):
             value = value.astype(float)
 
         value = value.view(cls)

@@ -150,6 +150,37 @@ class TestQuantityCreation:
         q5 = u.Quantity(decimal.Decimal('10.25'), u.m, dtype=object)
         assert q5.dtype == object
 
+    def test_float16_scalar_times_unit_preserves_dtype(self):
+        q = np.float16(1) * u.km
+        assert q.dtype == np.float16
+        assert q.unit == u.km
+
+    def test_float16_zero_dim_array_preserves_dtype(self):
+        a0 = np.array(np.float16(3.0))
+        q = u.Quantity(a0, u.m)
+        assert q.dtype == np.float16
+        assert q.shape == ()
+
+    def test_mixed_precision_promotes_correctly(self):
+        q16 = u.Quantity(np.float16(2.0), u.m)
+        q64 = u.Quantity(np.float64(3.0), u.m)
+        q = q16 + q64
+        assert q.unit == u.m
+        assert q.dtype == np.result_type(np.float16, np.float64)
+
+        a16 = u.Quantity(np.array([1.0, 2.0], dtype=np.float16), u.s)
+        a32 = u.Quantity(np.array([1.0, 2.0], dtype=np.float32), u.s)
+        out = a16 + a32
+        assert out.dtype == np.result_type(np.float16, np.float32)
+
+    def test_preserve_dtype_float16(self):
+        a16 = np.array([1., 2.], dtype=np.float16)
+        q16_arr = u.Quantity(a16, u.yr)
+        assert q16_arr.dtype == a16.dtype
+
+        q16_scalar = u.Quantity(np.float16(10), u.m)
+        assert q16_scalar.dtype == np.float16
+
     def test_copy(self):
 
         # By default, a new quantity is constructed, but not if copy=False

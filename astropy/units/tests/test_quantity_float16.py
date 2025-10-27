@@ -36,3 +36,30 @@ def test_float16_conversion_value_correct():
     # dtype may remain float16; ensure numerical value is correct.
     assert np.all(q.value == np.float16(1000)) or np.all(q.value == 1000)
 
+
+# Additional inexact dtype coverage (float32/float128, complex64/complex128)
+
+def test_float32_and_float128_preserve_dtype_on_construction_and_mul():
+    q32 = u.Quantity(np.float32(3), u.m)
+    assert q32.dtype == np.float32
+    q32m = np.float32(4) * u.s
+    assert q32m.dtype == np.float32
+
+    # float128 may not exist on all platforms; guard accordingly
+    if hasattr(np, 'float128'):
+        q128 = u.Quantity(np.float128(5), u.m)
+        assert q128.dtype == np.float128
+        q128m = np.float128(6) * u.s
+        assert q128m.dtype == np.float128
+
+
+def test_complex64_and_complex128_preserve_dtype_on_construction_and_mul():
+    c64 = u.Quantity(np.complex64(1+2j), u.m)
+    assert c64.dtype == np.complex64
+    c64m = np.complex64(2+3j) * u.s
+    assert c64m.dtype == np.complex64
+
+    c128 = u.Quantity(np.complex128(1+2j), u.m)
+    assert c128.dtype == np.complex128
+    c128m = np.complex128(2+3j) * u.s
+    assert c128m.dtype == np.complex128

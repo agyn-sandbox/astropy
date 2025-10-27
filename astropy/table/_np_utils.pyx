@@ -12,7 +12,8 @@ from numpy.lib.recfunctions import drop_fields
 
 cimport cython
 cimport numpy as np
-DTYPE = np.int
+# Use explicit NumPy integer dtype to avoid deprecated aliases.
+DTYPE = np.intp
 ctypedef np.intp_t DTYPE_t
 
 @cython.wraparound(False)
@@ -76,8 +77,8 @@ def join_inner(np.ndarray[DTYPE_t, ndim=1] idxs,
 
     cdef np.ndarray left_out = np.empty(n_out, dtype=DTYPE)
     cdef np.ndarray right_out = np.empty(n_out, dtype=DTYPE)
-    cdef np.ndarray left_mask = np.zeros(n_out, dtype=np.bool)
-    cdef np.ndarray right_mask = np.zeros(n_out, dtype=np.bool)
+    cdef np.ndarray left_mask = np.zeros(n_out, dtype=bool)
+    cdef np.ndarray right_mask = np.zeros(n_out, dtype=bool)
     cdef np.ndarray left_idxs = np.empty(max_key_idxs, dtype=DTYPE)
     cdef np.ndarray right_idxs = np.empty(max_key_idxs, dtype=DTYPE)
 

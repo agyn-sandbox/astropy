@@ -976,9 +976,10 @@ class TableOutputter(BaseOutputter):
     Output the table as an astropy.table.Table object.
     """
 
-    default_converters = [convert_numpy(numpy.int),
-                          convert_numpy(numpy.float),
-                          convert_numpy(numpy.str)]
+    # Avoid deprecated numpy aliases; map to Python/NumPy dtypes explicitly.
+    default_converters = [convert_numpy(int),
+                          convert_numpy(float),
+                          convert_numpy(str)]
 
     def __call__(self, cols, meta):
         # Sets col.data to numpy array and col.type to io.ascii Type class (e.g.

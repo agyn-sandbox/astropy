@@ -147,10 +147,11 @@ class HTMLOutputter(core.TableOutputter):
     of <th>).
     """
 
-    default_converters = [core.convert_numpy(numpy.int),
-                          core.convert_numpy(numpy.float),
-                          core.convert_numpy(numpy.str),
-                          core.convert_numpy(numpy.unicode)]
+    # Avoid deprecated numpy aliases; use Python/NumPy types explicitly.
+    default_converters = [core.convert_numpy(int),
+                          core.convert_numpy(float),
+                          core.convert_numpy(str),
+                          core.convert_numpy(str)]
 
     def __call__(self, cols, meta):
         """

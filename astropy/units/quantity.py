@@ -296,8 +296,12 @@ class Quantity(np.ndarray, metaclass=InheritDocstrings):
                 if not copy:
                     return value
 
-                if not (np.can_cast(np.float32, value.dtype) or
-                        value.dtype.fields):
+                # Preserve float and complex dtypes; cast others to float.
+                # Previously, this used np.can_cast(np.float32, value.dtype),
+                # which caused float16 to be upcast to float64 on construction.
+                # Here we check dtype.kind directly to preserve 'f' (float) and
+                # 'c' (complex), consistent with float32/64/128 behavior.
+                if not (value.dtype.kind in 'fc' or value.dtype.fields):
                     dtype = float
 
             return np.array(value, dtype=dtype, copy=copy, order=order,
@@ -376,9 +380,10 @@ class Quantity(np.ndarray, metaclass=InheritDocstrings):
             raise TypeError("The value must be a valid Python or "
                             "Numpy numeric type.")
 
-        # by default, cast any integer, boolean, etc., to float
-        if dtype is None and (not (np.can_cast(np.float32, value.dtype)
-                                   or value.dtype.fields)
+        # by default, cast any integer, boolean, etc., to float. Preserve
+        # float and complex dtypes (including float16/32/64/128), and
+        # structured dtypes. Object arrays are explicitly cast to float.
+        if dtype is None and (not (value.dtype.kind in 'fc' or value.dtype.fields)
                               or value.dtype.kind == 'O'):
             value = value.astype(float)
 

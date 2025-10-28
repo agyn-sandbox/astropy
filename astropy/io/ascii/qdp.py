@@ -60,7 +60,10 @@ def _line_type(line, delimiter=None):
     ValueError: Unrecognized QDP line...
     """
     _decimal_re = r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?"
-    _command_re = r"READ [TS]ERR(\s+[0-9]+)+"
+    # Recognize READ SERR/TERR directives case-insensitively.
+    # Allow tabs/multiple spaces between tokens; anchoring handled by _type_re.
+    _command_re = r"(?i:READ\s+[TS]ERR(?:\s+[0-9]+)+)"
+    # Note: Command directives (READ SERR/READ TERR) are recognized case-insensitively.
 
     sep = delimiter
     if delimiter is None:

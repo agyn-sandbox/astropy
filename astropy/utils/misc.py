@@ -537,6 +537,35 @@ class InheritDocstrings(type):
                         val.__doc__ = super_method.__doc__
                         break
 
+        # Extend docstring inheritance to properties: if a subclass defines
+        # a property without a docstring, inherit the docstring from the
+        # first base class in MRO that defines the same attribute (property
+        # or function) with a non-None docstring.
+        for key, val in dct.items():
+            if isinstance(val, property) and is_public_member(key):
+                # Only act if subclass property has no docstring.
+                if val.__doc__ is None:
+                    for base in cls.__mro__[1:]:
+                        # Prefer raw attribute lookup to avoid descriptor resolution.
+                        base_attr = base.__dict__.get(key)
+                        if base_attr is None:
+                            continue
+                        # Only inherit docs from a property or a callable.
+                        if isinstance(base_attr, property) or callable(base_attr):
+                            base_doc = getattr(base_attr, '__doc__', None)
+                            if base_doc is not None:
+                                # property.__doc__ is read-only; reconstruct
+                                # the property using subclass accessors and
+                                # the inherited docstring. Use type(val) to
+                                # preserve any property subclass.
+                                # Update the class attribute, not the original
+                                # class dict, since __init__ runs after class
+                                # creation. Reconstruct the property to set
+                                # the inherited docstring while preserving
+                                # accessors and any property subclass.
+                                setattr(cls, key, type(val)(val.fget, val.fset, val.fdel, base_doc))
+                                break
+
         super().__init__(name, bases, dct)
 
 

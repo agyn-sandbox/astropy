@@ -1449,34 +1449,16 @@ class TableDataDiff(_BaseDiff):
                 arrb.dtype, np.floating
             ):
                 diffs = where_not_allclose(arra, arrb, rtol=self.rtol, atol=self.atol)
-            elif any(tag in col.format for tag in ("P", "Q")):
-                differing_rows = []
-                for idx, (row_a, row_b) in enumerate(zip(arra, arrb)):
-                    if row_a is None or row_b is None:
-                        if row_a is not row_b:
-                            differing_rows.append(idx)
-                        continue
-
-                    row_a_arr = np.asarray(row_a)
-                    row_b_arr = np.asarray(row_b)
-
-                    if row_a_arr.shape != row_b_arr.shape:
-                        differing_rows.append(idx)
-                        continue
-
-                    if np.issubdtype(row_a_arr.dtype, np.inexact) or np.issubdtype(
-                        row_b_arr.dtype, np.inexact
-                    ):
-                        row_diffs = where_not_allclose(
-                            row_a_arr, row_b_arr, rtol=self.rtol, atol=self.atol
+            elif "P" in col.format:
+                diffs = (
+                    [
+                        idx
+                        for idx in range(len(arra))
+                        if not np.allclose(
+                            arra[idx], arrb[idx], rtol=self.rtol, atol=self.atol
                         )
-                        if row_diffs[0].size:
-                            differing_rows.append(idx)
-                    else:
-                        if not np.array_equal(row_a_arr, row_b_arr):
-                            differing_rows.append(idx)
-
-                diffs = (np.array(differing_rows, dtype=np.intp),)
+                    ],
+                )
             else:
                 diffs = np.where(arra != arrb)
 

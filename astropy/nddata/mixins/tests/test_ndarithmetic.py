@@ -314,6 +314,79 @@ def test_arithmetics_data_masks_invalid():
         nd1.divide(nd2)
 
 
+@pytest.mark.parametrize(
+    "mask",
+    [
+        np.array([[True, False], [False, True]], dtype=np.bool_),
+        np.array([[1, 0], [0, 1]], dtype=np.uint8),
+    ],
+)
+@pytest.mark.parametrize("handle_mask", [np.bitwise_or, np.logical_or])
+def test_arithmetics_single_mask_scalar(handle_mask, mask):
+    nd = NDDataArithmetic(np.ones_like(mask, dtype=float), mask=mask)
+
+    result = nd.multiply(1.0, handle_mask=handle_mask)
+
+    assert_array_equal(mask, result.mask)
+    assert result.mask.dtype == mask.dtype
+    assert not np.may_share_memory(result.mask, mask)
+
+
+def test_arithmetics_single_mask_nddataref_commutativity_bitwise_or():
+    mask = np.array([[True, False], [False, True]], dtype=np.bool_)
+    data = np.arange(4).reshape(2, 2)
+    masked = NDDataArithmetic(data, mask=mask)
+    unmasked = NDDataArithmetic(data)
+
+    forward = masked.multiply(unmasked, handle_mask=np.bitwise_or)
+    reverse = unmasked.multiply(masked, handle_mask=np.bitwise_or)
+
+    assert_array_equal(mask, forward.mask)
+    assert_array_equal(mask, reverse.mask)
+    assert forward.mask.dtype == mask.dtype
+    assert reverse.mask.dtype == mask.dtype
+    assert_array_equal(forward.mask, reverse.mask)
+    assert not np.may_share_memory(forward.mask, mask)
+    assert not np.may_share_memory(reverse.mask, mask)
+
+
+@pytest.mark.parametrize("handle_mask", [np.bitwise_or, np.logical_or])
+def test_arithmetics_both_masked(handle_mask):
+    mask1 = np.array([[True, False], [False, True]], dtype=np.bool_)
+    mask2 = np.array([[False, True], [True, False]], dtype=np.bool_)
+
+    nd1 = NDDataArithmetic(np.ones((2, 2)), mask=mask1)
+    nd2 = NDDataArithmetic(np.ones((2, 2)), mask=mask2)
+
+    result = nd1.add(nd2, handle_mask=handle_mask)
+
+    expected = handle_mask(mask1, mask2)
+    assert_array_equal(expected, result.mask)
+    assert np.issubdtype(result.mask.dtype, np.bool_)
+
+
+@pytest.mark.parametrize("handle_mask", [np.bitwise_or, np.logical_or])
+def test_arithmetics_no_masks(handle_mask):
+    nd1 = NDDataArithmetic(np.ones((2, 2)))
+    nd2 = NDDataArithmetic(np.ones((2, 2)))
+
+    result = nd1.add(nd2, handle_mask=handle_mask)
+
+    assert result.mask is None
+
+
+def test_arithmetics_mask_preserved_with_array_operand():
+    mask = np.array([True, False, True, False], dtype=np.bool_)
+    data = np.arange(mask.size)
+
+    nd = NDDataArithmetic(data, mask=mask)
+    result = nd.add(np.ones_like(data), handle_mask=np.bitwise_or)
+
+    assert_array_equal(mask, result.mask)
+    assert result.mask.dtype == mask.dtype
+    assert not np.may_share_memory(result.mask, mask)
+
+
 # Covering:
 # both have uncertainties (data and uncertainty without unit)
 # tested against manually determined resulting uncertainties to verify the

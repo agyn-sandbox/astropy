@@ -863,7 +863,7 @@ class Card(_Verify):
                 if value.endswith("&"):
                     value = value[:-1]
 
-                if not comment:
+                if comment is None:
                     trailing = vc[m.end("strg") : m.end(0)]
                     if trailing:
                         trailing_spaces = trailing.replace("'", "")
@@ -871,7 +871,7 @@ class Card(_Verify):
                             value += trailing_spaces
 
                 remainder = vc[m.end(0) :]
-                if remainder and not comment:
+                if remainder and comment is None:
                     extra_value = remainder.rstrip()
                     if extra_value.endswith("'"):
                         extra_value = extra_value[:-1]

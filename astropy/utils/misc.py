@@ -538,7 +538,7 @@ class InheritDocstrings(type):
                     if super_method is not None:
                         val.__doc__ = super_method.__doc__
                         break
-            elif (isinstance(val, property) and
+            elif (type(val) is property and
                   is_public_member(key) and
                   val.__doc__ is None):
                 for base in cls.__mro__[1:]:
@@ -552,11 +552,9 @@ class InheritDocstrings(type):
                             break
 
         for key, current_prop, doc in property_updates:
-            inherited = type(current_prop)(current_prop.fget, current_prop.fset,
-                                           current_prop.fdel, doc)
+            inherited = property(current_prop.fget, current_prop.fset,
+                                 current_prop.fdel, doc)
             setattr(cls, key, inherited)
-            if hasattr(inherited, "__set_name__"):
-                inherited.__set_name__(cls, key)
 
         super().__init__(name, bases, dct)
 

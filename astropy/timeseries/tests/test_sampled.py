@@ -38,6 +38,22 @@ def test_empty_initialization_invalid():
                                  "'time' as the first column but found 'flux'")
 
 
+def test_required_columns_missing_non_time_required():
+    ts = TimeSeries(time=INPUT_TIME)
+    ts['a'] = [1, 2, 3]
+
+    ts._required_columns = ['time', 'flux']
+    ts.add_column([1, 2, 3], name='flux', index=1)
+
+    with pytest.raises(ValueError) as exc:
+        ts.remove_column('flux')
+
+    assert str(exc.value) == (
+        "TimeSeries object is invalid - required ['time', 'flux'] as the first "
+        "columns but found ['time', 'a']"
+    )
+
+
 def test_initialize_only_time():
     ts = TimeSeries(time=INPUT_TIME)
     assert ts['time'] is ts.time
@@ -304,7 +320,10 @@ def test_pandas():
 def test_read_time_missing():
     with pytest.raises(ValueError) as exc:
         TimeSeries.read(CSV_FILE, format='csv')
-    assert exc.value.args[0] == '``time_column`` should be provided since the default Table readers are being used.'
+    assert exc.value.args[0] == (
+        '``time_column`` should be provided since the default Table readers are '
+        'being used.'
+    )
 
 
 def test_read_time_wrong():
@@ -339,7 +358,9 @@ def test_kepler_astropy():
 
 @pytest.mark.remote_data(source='astropy')
 def test_tess_astropy():
-    filename = get_pkg_data_filename('timeseries/hlsp_tess-data-alerts_tess_phot_00025155310-s01_tess_v1_lc.fits')
+    filename = get_pkg_data_filename(
+        'timeseries/hlsp_tess-data-alerts_tess_phot_00025155310-s01_tess_v1_lc.fits'
+    )
     with pytest.warns(UserWarning, match='Ignoring 815 rows with NaN times'):
         timeseries = TimeSeries.read(filename, format='tess.fits')
     assert timeseries["time"].format == 'isot'

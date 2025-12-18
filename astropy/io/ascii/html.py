@@ -9,12 +9,12 @@ must be installed to read HTML tables.
 """
 
 import warnings
+from copy import deepcopy
 
-from . import core
 from astropy.table import Column
 from astropy.utils.xml import writer
 
-from copy import deepcopy
+from . import core
 
 
 class SoupString(str):
@@ -354,6 +354,8 @@ class HTML(core.BaseReader):
             self.data.fill_values = [self.data.fill_values]
 
         self.data._set_fill_values(cols)
+        self.data.cols = cols
+        self.data._set_col_formats()
 
         lines = []
 
@@ -429,6 +431,7 @@ class HTML(core.BaseReader):
                                 for i in range(span):
                                     # Split up multicolumns into separate columns
                                     new_col = Column([el[i] for el in col])
+                                    new_col.info.format = col.info.format
 
                                     new_col_iter_str_vals = self.fill_values(
                                         col, new_col.info.iter_str_vals())

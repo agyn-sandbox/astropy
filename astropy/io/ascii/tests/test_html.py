@@ -10,17 +10,17 @@ to be installed.
 
 from io import StringIO
 
-from astropy.io.ascii import html
-from astropy.io.ascii import core
-from astropy.table import Table
-
-import pytest
 import numpy as np
+import pytest
+
+from astropy import units as u
+from astropy.io import ascii
+from astropy.io.ascii import core, html
+from astropy.table import Table
+from astropy.time import Time
+from astropy.utils.compat.optional_deps import HAS_BLEACH, HAS_BS4  # noqa
 
 from .common import setup_function, teardown_function  # noqa
-from astropy.io import ascii
-
-from astropy.utils.compat.optional_deps import HAS_BLEACH, HAS_BS4  # noqa
 
 if HAS_BS4:
     from bs4 import BeautifulSoup, FeatureNotFound
@@ -715,6 +715,122 @@ def test_multi_column_write_table_html_fill_values_masked():
     print(buffer_expected.getvalue())
 
     assert buffer_output.getvalue() == buffer_expected.getvalue()
+
+
+def test_html_writer_formats_callable_and_string():
+    table = Table(
+        {
+            'int_col': [1, 23],
+            'float_col': [1.2345, 23.4567],
+        }
+    )
+
+    formats = {
+        'int_col': lambda value: f"#{int(value):02d}",
+        'float_col': '0.2f',
+    }
+
+    buffer_output = StringIO()
+    table.write(buffer_output, format='ascii.html', formats=formats)
+    html_output = buffer_output.getvalue()
+
+    assert '<td>#01</td>' in html_output
+    assert '<td>#23</td>' in html_output
+    assert '<td>1.23</td>' in html_output
+    assert '<td>23.46</td>' in html_output
+
+
+def test_html_writer_formats_with_masked_fill_values():
+    float_data = np.ma.array([1.234, 0.0], mask=[False, True], dtype=float)
+    int_data = np.ma.array([0, 7], mask=[True, False], dtype=int)
+
+    table = Table(masked=True)
+    table['float_col'] = float_data
+    table['int_col'] = int_data
+
+    formats = {
+        'float_col': '0.1f',
+        'int_col': lambda value: f"{int(value):02d}",
+    }
+
+    buffer_output = StringIO()
+    table.write(
+        buffer_output,
+        format='ascii.html',
+        formats=formats,
+        fill_values=[(ascii.masked, '--')],
+    )
+
+    html_output = buffer_output.getvalue()
+
+    assert '<td>1.2</td>' in html_output
+    assert html_output.count('<td>--</td>') == 2
+    assert '<td>07</td>' in html_output
+
+
+def test_html_writer_formats_with_quantity_and_mixin():
+    table = Table()
+    table['distance'] = [1.2345, 6.789] * u.m
+    table['time'] = Time(['2000-01-01', '2000-01-02'])
+
+    formats = {
+        'distance': '0.3f',
+        'time': lambda value: value.isot,
+    }
+
+    buffer_output = StringIO()
+    table.write(buffer_output, format='ascii.html', formats=formats)
+    html_output = buffer_output.getvalue()
+
+    assert '<td>1.234</td>' in html_output
+    assert '<td>6.789</td>' in html_output
+    assert '<td>2000-01-01T00:00:00.000</td>' in html_output
+    assert '<td>2000-01-02T00:00:00.000</td>' in html_output
+
+
+def test_html_writer_formats_multidimensional_multicol():
+    multicol = [(1.111, 2.222), (3.333, 4.444)]
+    table = Table({'multi': multicol})
+
+    buffer_output = StringIO()
+    table.write(
+        buffer_output,
+        format='ascii.html',
+        formats={'multi': '0.1f'},
+        htmldict={'multicol': True},
+    )
+
+    html_output = buffer_output.getvalue()
+
+    assert html_output.count('<td>1.1</td>') == 1
+    assert html_output.count('<td>2.2</td>') == 1
+    assert '<td>3.3</td>' in html_output
+    assert '<td>4.4</td>' in html_output
+
+
+@pytest.mark.skipif('not HAS_BLEACH')
+def test_html_writer_formats_preserve_raw_html():
+    table = Table(
+        {
+            'value': [1.2345, 6.789],
+            'html_col': ['<em>a</em>', '<em>b</em>'],
+        }
+    )
+
+    buffer_output = StringIO()
+    table.write(
+        buffer_output,
+        format='ascii.html',
+        formats={'value': '0.2f'},
+        htmldict={'raw_html_cols': 'html_col'},
+    )
+
+    html_output = buffer_output.getvalue()
+
+    assert '<td>1.23</td>' in html_output
+    assert '<td>6.79</td>' in html_output
+    assert '<td><em>a</em></td>' in html_output
+    assert '<td><em>b</em></td>' in html_output
 
 
 @pytest.mark.skipif('not HAS_BS4')

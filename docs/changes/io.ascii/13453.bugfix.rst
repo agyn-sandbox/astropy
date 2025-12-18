@@ -1,0 +1,3 @@
+- The HTML ASCII writer now respects the ``formats`` argument, applying
+  user-specified formatting to numeric, mixin, masked, and multidimensional
+  columns while leaving raw HTML columns unchanged. [#72]

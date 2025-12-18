@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 import astropy.units as u
+from astropy.table import Column
 from astropy.units import Quantity
 from astropy.units.core import UnitTypeError
 
@@ -27,9 +28,13 @@ class DuckArray:
         if method != "__call__" or ufunc.nin != 2:
             return NotImplemented
         a, b = inputs
+        target_unit = None
         if isinstance(a, Quantity):
+            target_unit = a.unit
             a = a.to(self.unit).value
         if isinstance(b, Quantity):
+            if target_unit is None:
+                target_unit = b.unit
             b = b.to(self.unit).value
         # Extract DuckArray payloads
         if isinstance(a, DuckArray):
@@ -37,7 +42,10 @@ class DuckArray:
         if isinstance(b, DuckArray):
             b = b.q.to(self.unit).value
         res = getattr(ufunc, method)(a, b, **kwargs)
-        return DuckArray(res * self.unit)
+        result_quantity = res * self.unit
+        if target_unit is not None:
+            result_quantity = result_quantity.to(target_unit)
+        return DuckArray(result_quantity)
 
     # enable comparisons in assertions
     def __eq__(self, other):
@@ -59,6 +67,34 @@ def test_mixed_duck_add_defers_to_duck():
     res2 = q + duck
     assert isinstance(res2, DuckArray)
     assert res2 == res
+
+
+def test_mixed_duck_reflected_add():
+    duck = DuckArray(2 * u.mm)
+    q = 3 * u.m
+    res = np.add(duck, q)
+    assert isinstance(res, DuckArray)
+    assert res.q.unit == u.m
+    assert np.allclose(res.q.value, 3.002)
+
+    res2 = duck + q
+    assert isinstance(res2, DuckArray)
+    assert res2 == res
+
+
+def test_mixed_duck_subtract_defers_both_ways():
+    duck = DuckArray(5 * u.cm)
+    q = 1 * u.m
+
+    res = np.subtract(q, duck)
+    assert isinstance(res, DuckArray)
+    assert res.q.unit == u.m
+    assert np.allclose(res.q.value, 0.95)
+
+    res2 = np.subtract(duck, q)
+    assert isinstance(res2, DuckArray)
+    assert res2.q.unit == u.m
+    assert np.allclose(res2.q.value, -0.95)
 
 
 def test_incompatible_quantities_still_raise():
@@ -164,3 +200,22 @@ def test_reduce_accumulate_at_unchanged():
     idx = np.array([0])
     np.add.at(a, idx, 1 * u.m)
     assert a[0].unit == u.m
+
+
+def test_quantity_column_interaction_preserved():
+    column = Column([1, 2], unit=u.m)
+    q = 3 * u.m
+
+    res = q + column
+    assert isinstance(res, Quantity)
+    assert np.allclose(res.value, [4, 5])
+
+    reflected = column + q
+    assert hasattr(reflected, "unit")
+    assert reflected.unit == u.m
+    assert np.allclose(reflected.value, [4, 5])
+
+    via_numpy = np.add(column, q)
+    assert hasattr(via_numpy, "unit")
+    assert via_numpy.unit == u.m
+    assert np.allclose(via_numpy.value, [4, 5])

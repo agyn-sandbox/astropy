@@ -636,6 +636,13 @@ class Quantity(np.ndarray):
         result : `~astropy.units.Quantity`
             Results of the ufunc, with the unit set properly.
         """
+        def _is_plain_numpy(arg):
+            return isinstance(arg, (np.ndarray, np.generic, numbers.Number))
+
+        def _is_table_column(arg):
+            module = getattr(type(arg), "__module__", "")
+            return module.startswith("astropy.table.") and hasattr(arg, "info")
+
         # Helper: decide whether to defer to a mixed duck-type input.
         # We only defer for binary ufunc __call__ (nin == 2) with mixed
         # Quantity and non-Quantity inputs, where the non-Quantity side is a duck that
@@ -649,8 +656,6 @@ class Quantity(np.ndarray):
             if not (has_quantity and has_non_quantity):
                 return False
             # If all non-Quantity are plain numpy arrays/scalars, do not defer.
-            def _is_plain_numpy(x):
-                return isinstance(x, (np.ndarray, np.number, numbers.Number))
             # Any foreign duck? (has __array_ufunc__ or 'unit' attribute)
             for inp in inputs:
                 if isinstance(inp, Quantity) or _is_plain_numpy(inp):
@@ -659,17 +664,40 @@ class Quantity(np.ndarray):
                     return True
             return False
 
+        if (
+            method == "__call__"
+            and getattr(function, "nin", None) == 2
+            and any(isinstance(arg, Quantity) for arg in inputs)
+        ):
+            for arg in inputs:
+                if (
+                    isinstance(arg, Quantity)
+                    or _is_plain_numpy(arg)
+                    or _is_table_column(arg)
+                ):
+                    continue
+                try:
+                    unit_attr = getattr(arg, "unit")
+                except AttributeError:
+                    continue
+                except Exception:
+                    return NotImplemented
+                if unit_attr is not None:
+                    return NotImplemented
+
         # Determine required conversion functions -- to bring the unit of the
         # input to that expected (e.g., radian for np.sin), or to get
         # consistent units between two inputs (e.g., in np.add) --
         # and the unit of the result (or tuple of units for nout > 1).
         try:
             converters, unit = converters_and_unit(function, method, *inputs)
-        except (AttributeError, TypeError, ValueError):
+        except (AttributeError, TypeError, ValueError, UnitConversionError) as err:
             # If we are in a mixed duck-type situation for binary arithmetic,
             # return NotImplemented to allow numpy to try the other operand.
             if _should_defer_mixed_duck():
                 return NotImplemented
+            if isinstance(err, UnitConversionError):
+                raise UnitTypeError(err.args[0]) from err
             raise
 
         out = kwargs.get("out", None)

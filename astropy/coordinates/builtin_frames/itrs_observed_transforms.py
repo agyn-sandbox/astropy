@@ -44,38 +44,37 @@ _OBSTIME_WARNING = (
 )
 
 _OBSERVED_TO_ITRS_DISTANCE_ERROR = (
-    "Observed->ITRS requires a distance to compute absolute ITRS coordinates. Provide distance "
-    "or use geoid_fallback='wgs84'."
+    "Observed->ITRS requires a distance to compute absolute ITRS coordinates. Provide a finite "
+    "distance on the observed coordinate to compute the target ITRS position."
 )
+
+_OBSTIME_TOLERANCE_SEC = 1e-9
 
 
 def _warn_if_obstime_mismatch(source_time, target_time):
     if source_time is None or target_time is None:
         return
 
-    try:
-        equal = np.all(source_time == target_time)
-    except Exception:  # pragma: no cover - defensive against unexpected shapes
-        equal = False
+    delta_seconds = np.abs((target_time - source_time).to_value(u.s))
+    if np.all(delta_seconds <= _OBSTIME_TOLERANCE_SEC):
+        return
 
-    if not equal:
-        warnings.warn(
-            _OBSTIME_WARNING.format(t_in=source_time.iso, t_out=target_time.iso),
-            AstropyUserWarning,
-            stacklevel=3,
-        )
+    warnings.warn(
+        _OBSTIME_WARNING.format(t_in=source_time.iso, t_out=target_time.iso),
+        AstropyUserWarning,
+        stacklevel=3,
+    )
 
 
 def _warn_if_pressure(frame):
-    pressure = getattr(frame, "pressure", None)
+    if not hasattr(frame, "pressure"):
+        return
+
+    pressure = frame.pressure
     if pressure is None:
         return
 
-    try:
-        pressure_values = pressure.to_value(u.hPa)
-    except Exception:
-        return
-
+    pressure_values = pressure.to_value(u.hPa)
     if np.any(pressure_values != 0):
         warnings.warn(_REFRACTION_WARNING, AstropyUserWarning, stacklevel=3)
 

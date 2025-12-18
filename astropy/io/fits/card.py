@@ -859,9 +859,29 @@ class Card(_Verify):
                     return kw, vc
 
                 value = m.group("strg") or ""
-                value = value.rstrip().replace("''", "'")
+                trailing = vc[m.end("strg") : m.end(0)]
+                if trailing:
+                    trailing_spaces = trailing.replace("'", "")
+                    if trailing_spaces:
+                        space_len = len(trailing_spaces) - len(trailing_spaces.lstrip(" "))
+                        if space_len > 0:
+                            value += trailing_spaces[:space_len]
+                remainder = vc[m.end(0) :]
                 if value and value[-1] == "&":
                     value = value[:-1]
+                if remainder:
+                    remainder = remainder.rstrip()
+                    if remainder and not remainder.startswith("/"):
+                        # Handle value fragments that were not consumed by the
+                        # regex match (e.g. text following doubled quotes
+                        # before the continuation marker) by appending them to
+                        # the accumulated value.
+                        extra_value = remainder
+                        if "/" in extra_value:
+                            extra_value = extra_value.split("/", 1)[0]
+                        if "&" in extra_value:
+                            extra_value = extra_value.split("&", 1)[0]
+                        value += extra_value
                 values.append(value)
                 comment = m.group("comm")
                 if comment:
@@ -870,8 +890,13 @@ class Card(_Verify):
             if keyword in self._commentary_keywords:
                 valuecomment = "".join(values)
             else:
-                # CONTINUE card
-                valuecomment = f"'{''.join(values)}' / {' '.join(comments)}"
+                joined = "".join(values)
+                actual_value = joined.replace("''", "'")
+                encoded_value = _format_value(actual_value).strip()
+                if comments:
+                    valuecomment = f"{encoded_value} / {' '.join(comments)}"
+                else:
+                    valuecomment = encoded_value
             return keyword, valuecomment
 
         if self.keyword in self._special_keywords:

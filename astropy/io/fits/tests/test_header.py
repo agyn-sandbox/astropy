@@ -321,6 +321,27 @@ class TestHeaderFunctions(FitsTestCase):
                           match='Verification reported errors'):
             assert str(c) == _pad("XYZ     =                  100")
 
+    def test_card_fromstring_accepts_bytes(self):
+        card_image = str(fits.Card('TEST', 123))
+        card_bytes = card_image.encode('ascii')
+
+        card_from_str = fits.Card.fromstring(card_image)
+        card_from_bytes = fits.Card.fromstring(card_bytes)
+
+        assert card_from_str.keyword == 'TEST'
+        assert card_from_bytes.keyword == 'TEST'
+        assert card_from_bytes.value == 123
+
+    def test_card_fromstring_bytes_strict_ascii(self):
+        card_bytes = str(fits.Card('TEST', 123)).encode('ascii')
+        bad_bytes = card_bytes[:-1] + b'\xff'
+
+        with pytest.raises(UnicodeDecodeError):
+            fits.Card.fromstring(bad_bytes)
+
+        with pytest.raises(TypeError):
+            fits.Card.fromstring(123)
+
     def test_equal_only_up_to_column_10(self, capsys):
         # the test of "=" location is only up to column 10
 
@@ -870,6 +891,28 @@ class TestHeaderFunctions(FitsTestCase):
         assert 'A' in newheader
         assert 'C' not in newheader
         assert 'E' in newheader
+
+    def test_header_fromstring_accepts_bytes(self):
+        cards = [str(fits.Card('SIMPLE', True)), _pad('END')]
+        cases = [('', ''.join(cards)), ('\n', '\n'.join(cards))]
+
+        for sep, payload in cases:
+            header_from_str = fits.Header.fromstring(payload, sep=sep)
+            header_from_bytes = fits.Header.fromstring(
+                payload.encode('ascii'), sep=sep)
+
+            assert header_from_str['SIMPLE'] is True
+            assert header_from_bytes['SIMPLE'] is True
+
+    def test_header_fromstring_bytes_strict_ascii(self):
+        header_bytes = (str(fits.Card('SIMPLE', True)) + _pad('END')).encode('ascii')
+        bad_bytes = header_bytes[:-1] + b'\xff'
+
+        with pytest.raises(UnicodeDecodeError):
+            fits.Header.fromstring(bad_bytes)
+
+        with pytest.raises(TypeError):
+            fits.Header.fromstring(123)
 
     def test_header_slice_assignment(self):
         """

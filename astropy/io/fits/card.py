@@ -858,20 +858,42 @@ class Card(_Verify):
                 if not m:
                     return kw, vc
 
-                value = m.group("strg") or ""
-                value = value.rstrip().replace("''", "'")
-                if value and value[-1] == "&":
-                    value = value[:-1]
-                values.append(value)
                 comment = m.group("comm")
+                value = m.group("strg") or ""
+                if value.endswith("&"):
+                    value = value[:-1]
+
+                if comment is None:
+                    trailing = vc[m.end("strg") : m.end(0)]
+                    if trailing:
+                        trailing_spaces = trailing.replace("'", "")
+                        if trailing_spaces:
+                            value += trailing_spaces
+
+                remainder = vc[m.end(0) :]
+                if remainder and comment is None:
+                    extra_value = remainder.rstrip()
+                    if extra_value.endswith("'"):
+                        extra_value = extra_value[:-1]
+                        extra_value = extra_value.rstrip()
+                    if extra_value.endswith("&"):
+                        extra_value = extra_value[:-1]
+                    if extra_value:
+                        value += extra_value
+                values.append(value)
                 if comment:
                     comments.append(comment.rstrip())
 
             if keyword in self._commentary_keywords:
                 valuecomment = "".join(values)
             else:
-                # CONTINUE card
-                valuecomment = f"'{''.join(values)}' / {' '.join(comments)}"
+                joined = "".join(values)
+                actual_value = joined.replace("''", "'")
+                encoded_value = _format_value(actual_value).strip()
+                if comments:
+                    valuecomment = f"{encoded_value} / {' '.join(comments)}"
+                else:
+                    valuecomment = encoded_value
             return keyword, valuecomment
 
         if self.keyword in self._special_keywords:

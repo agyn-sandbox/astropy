@@ -468,6 +468,69 @@ class TestHeaderFunctions(FitsTestCase):
             "CONTINUE  'xml'                                                                 "
         )
 
+    @pytest.mark.parametrize("comment", [None, "comment"])
+    def test_long_string_trailing_doubled_quotes_round_trip(self, comment):
+        for n in range(60, 100):
+            value = "x" * n + "''"
+            if comment is None:
+                card = fits.Card("CONFIG", value)
+                image = card.image
+            else:
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always", VerifyWarning)
+                    card = fits.Card("CONFIG", value, comment)
+                    image = card.image
+                emitted_warning = any(
+                    isinstance(w.message, VerifyWarning) for w in caught
+                )
+                if len(image) == card.length:
+                    assert emitted_warning
+                else:
+                    assert not emitted_warning
+            round_trip = fits.Card.fromstring(image)
+            assert round_trip.value == value
+            if comment is None:
+                assert round_trip.comment == ""
+            else:
+                if len(card.image) > card.length:
+                    assert round_trip.comment == comment
+                else:
+                    parts = card.image.split("/", 1)
+                    expected_comment = parts[1].strip() if len(parts) == 2 else ""
+                    assert round_trip.comment == expected_comment
+
+    def test_long_string_embedded_doubled_quotes_across_boundaries(self):
+        prefix = "A" * 48
+        suffix = "B" * 64
+        value = prefix + "''" + suffix
+        card = fits.Card("BOUND", value, "spans boundaries")
+        round_trip = fits.Card.fromstring(card.image)
+        assert round_trip.value == value
+        assert round_trip.comment == "spans boundaries"
+
+    @pytest.mark.parametrize(
+        "value, comment",
+        [
+            ("x" * 100 + "''", "comment"),
+            ("x" * 100 + "'' aaa", "comment"),
+        ],
+    )
+    def test_long_string_regression_cases_with_trailing_quotes(self, value, comment):
+        card = fits.Card("FOO", value, comment)
+        round_trip = fits.Card.fromstring(card.image)
+        assert round_trip.value == value
+        assert round_trip.comment == comment
+
+    def test_null_string_round_trip_including_continued_value(self):
+        card = fits.Card("NULL", "''")
+        round_trip = fits.Card.fromstring(card.image)
+        assert round_trip.value == "''"
+
+        long_value = "prefix-" + "y" * 48 + "''" + "z" * 48 + "-suffix"
+        long_card = fits.Card("NULL", long_value)
+        long_round_trip = fits.Card.fromstring(long_card.image)
+        assert long_round_trip.value == long_value
+
     def test_long_unicode_string(self):
         """Regression test for
         https://github.com/spacetelescope/PyFITS/issues/1

@@ -70,6 +70,16 @@ class CDS(Base):
         for key, val in cds.__dict__.items():
             if isinstance(val, u.UnitBase):
                 names[key] = val
+                for alias in getattr(val, "aliases", ()):  # include canonical aliases
+                    names[alias] = val
+
+        # Ensure common alias spellings are available even when CDS mappings
+        # only register the short token variant.
+        names.setdefault("pix", u.pix)
+        names.setdefault("pixel", u.pix)
+        names.setdefault("vox", u.vox)
+        names.setdefault("voxel", u.vox)
+        names.setdefault("photon", u.ph)
 
         return names
 
@@ -163,15 +173,20 @@ class CDS(Base):
                 p[0] = Unit(p[1])
 
         def p_combined_units(p):
+            # Chained division is left-associative, so A/B/C/D parses as
+            # A * B^-1 * C^-1 * D^-1 (matching Generic format behavior).
+            # Leading inverse is supported via a leading '/' before a unit
+            # expression (e.g., '/pixel/s' → (pixel*s)^-1). Exponent and factor
+            # handling are unchanged (e.g., 'kpc2' → kpc**2; '10+3J' → 1e3 * J).
             """
-            combined_units : product_of_units
-                           | division_of_units
+            combined_units : division_product_of_units
             """
             p[0] = p[1]
 
         def p_product_of_units(p):
+            # Left-recursive product to compose sequential products uniformly.
             """
-            product_of_units : unit_expression PRODUCT combined_units
+            product_of_units : unit_expression PRODUCT product_of_units
                              | unit_expression
             """
             if len(p) == 4:
@@ -179,15 +194,19 @@ class CDS(Base):
             else:
                 p[0] = p[1]
 
-        def p_division_of_units(p):
+        def p_division_product_of_units(p):
+            # Left-associative division with optional leading inverse support.
             """
-            division_of_units : DIVISION unit_expression
-                              | unit_expression DIVISION combined_units
+            division_product_of_units : division_product_of_units DIVISION product_of_units
+                                      | product_of_units
+                                      | DIVISION unit_expression
             """
-            if len(p) == 3:
+            if len(p) == 4:
+                p[0] = p[1] / p[3]
+            elif len(p) == 3:
                 p[0] = p[2] ** -1
             else:
-                p[0] = p[1] / p[3]
+                p[0] = p[1]
 
         def p_unit_expression(p):
             """

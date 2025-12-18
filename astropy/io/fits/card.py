@@ -547,11 +547,20 @@ class Card(_Verify):
     @classmethod
     def fromstring(cls, image):
         """
-        Construct a `Card` object from a (raw) string. It will pad the string
-        if it is not the length of a card image (80 columns).  If the card
-        image is longer than 80 columns, assume it contains ``CONTINUE``
-        card(s).
+        Construct a `Card` object from a (raw) string or bytes. It will pad the
+        string if it is not the length of a card image (80 columns).  If the
+        card image is longer than 80 columns, assume it contains ``CONTINUE``
+        card(s).  ``bytes`` inputs are decoded using ASCII with
+        ``errors='strict'`` prior to parsing, unlike `Header.fromfile` which
+        may decode file content more permissively.
         """
+
+        if isinstance(image, bytes):
+            image = image.decode('ascii', 'strict')
+        elif not isinstance(image, str):
+            raise TypeError(
+                'Card.fromstring expected str or bytes, got {0}'.format(
+                    type(image).__name__))
 
         card = cls()
         card._image = _pad(image)

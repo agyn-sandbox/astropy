@@ -150,6 +150,46 @@ class TestQuantityCreation:
         q5 = u.Quantity(decimal.Decimal('10.25'), u.m, dtype=object)
         assert q5.dtype == object
 
+    def test_float16_dtype_preservation(self):
+        scalar = np.float16(1)
+        quantity = scalar * u.km
+        assert quantity.dtype == np.dtype('float16')
+
+        constructed = u.Quantity(np.float16(2), u.m)
+        assert constructed.dtype == np.dtype('float16')
+
+        array = np.array([1, 2, 3], dtype=np.float16)
+        array_quantity = u.Quantity(array, u.s)
+        assert array_quantity.dtype == array.dtype
+
+    def test_float16_respects_explicit_dtype(self):
+        value = np.float16(1)
+        q_float32 = u.Quantity(value, u.m, dtype=np.float32)
+        assert q_float32.dtype == np.dtype('float32')
+
+        q_float16 = u.Quantity(value, u.m, dtype=np.float16)
+        assert q_float16.dtype == np.dtype('float16')
+
+    def test_int_and_bool_inputs_default_to_float64(self):
+        q_int = u.Quantity(5, u.m)
+        assert q_int.dtype == np.dtype('float64')
+
+        q_bool = u.Quantity(True, u.s)
+        assert q_bool.dtype == np.dtype('float64')
+
+        array = np.array([1, 2, 3], dtype=np.int16)
+        q_array = u.Quantity(array, u.cm)
+        assert q_array.dtype == np.dtype('float64')
+
+    def test_other_inexact_dtypes_preserved(self):
+        float32_array = np.array([1.0], dtype=np.float32)
+        float32_quantity = u.Quantity(float32_array, u.m)
+        assert float32_quantity.dtype == float32_array.dtype
+
+        complex64_array = np.array([1.0 + 2.0j], dtype=np.complex64)
+        complex64_quantity = u.Quantity(complex64_array, u.s)
+        assert complex64_quantity.dtype == complex64_array.dtype
+
     def test_copy(self):
 
         # By default, a new quantity is constructed, but not if copy=False

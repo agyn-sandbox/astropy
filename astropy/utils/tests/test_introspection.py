@@ -86,6 +86,13 @@ def test_minversion_dev_comparisons():
     assert not minversion(_module_with_version('1.14'), '1.14dev')
 
 
+def test_minversion_multi_component_dev_ordering():
+    lower = _module_with_version('1.2.3.4.dev1')
+    higher_version = '1.2.3.5.dev1'
+    assert not minversion(lower, higher_version)
+    assert minversion(_module_with_version(higher_version), '1.2.3.4.dev1')
+
+
 @pytest.mark.parametrize(
     'lower,higher',
     [

@@ -104,6 +104,8 @@ _TAG_PATTERNS = {
     name: re.compile(rf'[-_.]*{name}(\d*)$') for name, _ in _TAG_RULES
 }
 
+_TAG_SENTINEL = 0
+
 
 def _normalize_for_loose_version(version_string):
     """Normalize a version string for ``LooseVersion`` comparisons."""
@@ -120,9 +122,11 @@ def _normalize_for_loose_version(version_string):
     remainder = text[len(release_str):]
 
     release_parts = [int(part) for part in release_str.split('.') if part]
-    while len(release_parts) < 3:
-        release_parts.append(0)
-    release_parts = release_parts[:3]
+    if not release_parts:
+        release_parts = [0]
+    while len(release_parts) > 1 and release_parts[-1] == 0:
+        release_parts.pop()
+    release_parts = [value + 1 for value in release_parts]
 
     tag_code = 0
     tag_number = 0
@@ -137,7 +141,7 @@ def _normalize_for_loose_version(version_string):
             break
 
     normalized_code = tag_code + 3
-    components = release_parts + [normalized_code, tag_number]
+    components = release_parts + [_TAG_SENTINEL, normalized_code, tag_number]
     return '.'.join(str(value) for value in components)
 
 

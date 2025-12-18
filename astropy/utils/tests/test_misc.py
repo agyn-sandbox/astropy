@@ -5,10 +5,11 @@ import os
 from datetime import datetime
 import locale
 
-import pytest
 import numpy as np
+import pytest
 
 from .. import data, misc
+from ..decorators import classproperty
 
 
 def test_isiterable():
@@ -87,6 +88,7 @@ def test_inherit_docstrings_method_override_inherits_docstring():
     if Base.__call__.__doc__ is None:
         pytest.skip("docstrings stripped by -OO")
     assert Subclass.__call__.__doc__ == "FOO"
+
 
 def test_inherit_docstrings_property_override_inherits_docstring():
     class Base(metaclass=misc.InheritDocstrings):
@@ -245,6 +247,23 @@ def test_inherit_docstrings_leaves_non_property_descriptors_untouched():
     sub_descriptor = Sub.__dict__["descriptor"]
     assert isinstance(sub_descriptor, Descriptor)
     assert sub_descriptor.__doc__ is None
+
+
+def test_inherit_docstrings_classproperty_override_preserves_descriptor():
+    class Base(metaclass=misc.InheritDocstrings):
+        @classproperty
+        def value(cls):
+            "classproperty doc"
+            return 1
+
+    class Sub(Base):
+        @classproperty
+        def value(cls):
+            return 2
+
+    sub_descriptor = Sub.__dict__["value"]
+    assert isinstance(sub_descriptor, classproperty)
+    assert Sub.value == 2
 
 
 def test_set_locale():

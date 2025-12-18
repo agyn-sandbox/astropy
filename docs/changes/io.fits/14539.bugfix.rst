@@ -1,0 +1,3 @@
+`FITSDiff` and `TableDataDiff` now correctly handle FITS variable-length
+array columns that use the ``Q`` descriptor, applying tolerance-aware
+comparisons for numeric values and exact matching for strings.

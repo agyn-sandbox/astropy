@@ -601,6 +601,299 @@ class TestDiff(FitsTestCase):
         assert "13 different table data element(s) found (65.00% different)" in report
         assert report.count("more indices") == 1
 
+    def test_fitsdiff_vla_identical_pd_qd(self):
+        pd_values = np.array(
+            [
+                np.asarray([1.0, 2.0], dtype=np.float64),
+                np.asarray([3.0, 4.0, 5.0], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+        qd_values = np.array(
+            [
+                np.asarray([1.0, 2.0, 3.0], dtype=np.float64),
+                np.asarray([4.0, 5.0], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+
+        base_columns = [
+            Column(name="PD", format="PD()", array=pd_values),
+            Column(name="QD", format="QD()", array=qd_values),
+        ]
+        table_a = BinTableHDU.from_columns(base_columns)
+        table_b = BinTableHDU.from_columns([col.copy() for col in base_columns])
+
+        hdul_a = HDUList([PrimaryHDU(), table_a])
+        hdul_b = HDUList([PrimaryHDU(), table_b])
+
+        diff = FITSDiff(hdul_a, hdul_b)
+        assert diff.identical
+
+    def test_fitsdiff_vla_differences_pd_qd(self):
+        pd_values = np.array(
+            [
+                np.asarray([1.0, 2.0], dtype=np.float64),
+                np.asarray([3.0, 4.0], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+        qd_values = np.array(
+            [
+                np.asarray([1.0, 2.0, 3.0], dtype=np.float64),
+                np.asarray([4.0, 5.0], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+
+        table_a = BinTableHDU.from_columns(
+            [
+                Column(name="PD", format="PD()", array=pd_values),
+                Column(name="QD", format="QD()", array=qd_values),
+            ]
+        )
+
+        qd_values_b = np.array(
+            [
+                np.asarray([1.0, 2.0, 3.0], dtype=np.float64),
+                np.asarray([4.5, 5.0], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+        table_b = BinTableHDU.from_columns(
+            [
+                Column(name="PD", format="PD()", array=pd_values),
+                Column(name="QD", format="QD()", array=qd_values_b),
+            ]
+        )
+
+        diff = FITSDiff(
+            HDUList([PrimaryHDU(), table_a]), HDUList([PrimaryHDU(), table_b])
+        )
+
+        assert not diff.identical
+        assert diff.diff_hdus
+        table_diff = diff.diff_hdus[0][1].diff_data
+        assert isinstance(table_diff, TableDataDiff)
+        assert any(name == ("QD", 1) for name, _ in table_diff.diff_values)
+
+    def test_tabledatadiff_vla_numeric_pd_qd_identical_and_tol(self):
+        pd_values = np.array(
+            [
+                np.asarray([1.0, 2.0], dtype=np.float64),
+                np.asarray([3.0, 4.0], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+        qd_values = np.array(
+            [
+                np.asarray([1.0, 2.0, 3.0], dtype=np.float64),
+                np.asarray([4.0, 5.0], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+
+        table_a = BinTableHDU.from_columns(
+            [
+                Column(name="PD", format="PD()", array=pd_values),
+                Column(name="QD", format="QD()", array=qd_values),
+            ]
+        )
+
+        pd_values_close = np.array(
+            [
+                np.asarray([1.0 + 1e-6, 2.0 - 1e-6], dtype=np.float64),
+                np.asarray([3.0, 4.0 + 5e-6], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+        qd_values_close = np.array(
+            [
+                np.asarray([1.0, 2.0 + 2e-6, 3.0], dtype=np.float64),
+                np.asarray([4.0, 5.0 - 3e-6], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+
+        table_close = BinTableHDU.from_columns(
+            [
+                Column(name="PD", format="PD()", array=pd_values_close),
+                Column(name="QD", format="QD()", array=qd_values_close),
+            ]
+        )
+
+        diff_close = TableDataDiff(table_a.data, table_close.data, rtol=1e-4, atol=1e-7)
+        assert diff_close.identical
+
+        qd_values_far = np.array(
+            [
+                np.asarray([1.0, 2.0, 3.0], dtype=np.float64),
+                np.asarray([4.1, 5.0], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+        table_far = BinTableHDU.from_columns(
+            [
+                Column(name="PD", format="PD()", array=pd_values),
+                Column(name="QD", format="QD()", array=qd_values_far),
+            ]
+        )
+
+        diff_far = TableDataDiff(table_a.data, table_far.data, rtol=1e-4, atol=1e-7)
+        assert not diff_far.identical
+        assert diff_far.diff_values
+        assert diff_far.diff_values[0][0] == ("QD", 1)
+
+    def test_tabledatadiff_vla_strings_pa_qa(self):
+        pa_values = np.array(
+            [
+                np.asarray([b"a", b"b"], dtype="S1"),
+                np.asarray([b"c"], dtype="S1"),
+            ],
+            dtype=object,
+        )
+        qa_values = np.array(
+            [
+                np.asarray([b"x"], dtype="S1"),
+                np.asarray([b"y", b"z"], dtype="S1"),
+            ],
+            dtype=object,
+        )
+
+        table_a = BinTableHDU.from_columns(
+            [
+                Column(name="PA", format="PA()", array=pa_values),
+                Column(name="QA", format="QA()", array=qa_values),
+            ]
+        )
+
+        table_same = BinTableHDU.from_columns(
+            [
+                Column(name="PA", format="PA()", array=pa_values),
+                Column(name="QA", format="QA()", array=qa_values),
+            ]
+        )
+        diff_same = TableDataDiff(table_a.data, table_same.data)
+        assert diff_same.identical
+
+        qa_values_diff = np.array(
+            [
+                np.asarray([b"x"], dtype="S1"),
+                np.asarray([b"y", b"w"], dtype="S1"),
+            ],
+            dtype=object,
+        )
+        table_diff = BinTableHDU.from_columns(
+            [
+                Column(name="PA", format="PA()", array=pa_values),
+                Column(name="QA", format="QA()", array=qa_values_diff),
+            ]
+        )
+
+        diff_strings = TableDataDiff(table_a.data, table_diff.data)
+        assert not diff_strings.identical
+        assert diff_strings.diff_values[0][0] == ("QA", 1)
+
+    def test_tabledatadiff_vla_empty_rows_pd_qd(self):
+        pd_values = np.array(
+            [
+                np.asarray([], dtype=np.float64),
+                np.asarray([1.0, 2.0], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+        qd_values = np.array(
+            [
+                np.asarray([], dtype=np.float64),
+                np.asarray([], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+
+        table_a = BinTableHDU.from_columns(
+            [
+                Column(name="PD", format="PD()", array=pd_values),
+                Column(name="QD", format="QD()", array=qd_values),
+            ]
+        )
+        table_b = BinTableHDU.from_columns(
+            [
+                Column(name="PD", format="PD()", array=pd_values),
+                Column(name="QD", format="QD()", array=qd_values),
+            ]
+        )
+
+        diff_identical = TableDataDiff(table_a.data, table_b.data)
+        assert diff_identical.identical
+
+        pd_values_mismatch = np.array(
+            [
+                np.asarray([], dtype=np.float64),
+                np.asarray([1.0, 2.5], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+        table_c = BinTableHDU.from_columns(
+            [
+                Column(name="PD", format="PD()", array=pd_values_mismatch),
+                Column(name="QD", format="QD()", array=qd_values),
+            ]
+        )
+
+        diff_mismatch = TableDataDiff(table_a.data, table_c.data)
+        assert not diff_mismatch.identical
+        assert diff_mismatch.diff_values[0][0] == ("PD", 1)
+
+    def test_tabledatadiff_vla_multidim_pd_qd(self):
+        pd_values = np.array(
+            [
+                np.asarray([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64),
+                np.asarray([[5.0, 6.0], [7.0, 8.0]], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+        qd_values = np.array(
+            [
+                np.asarray([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64),
+                np.asarray([[5.0, 6.0], [7.0, 8.0]], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+
+        table_a = BinTableHDU.from_columns(
+            [
+                Column(name="PD", format="PD()", dim="(2,2)", array=pd_values),
+                Column(name="QD", format="QD()", dim="(2,2)", array=qd_values),
+            ]
+        )
+        table_b = BinTableHDU.from_columns(
+            [
+                Column(name="PD", format="PD()", dim="(2,2)", array=pd_values),
+                Column(name="QD", format="QD()", dim="(2,2)", array=qd_values),
+            ]
+        )
+
+        diff_identical = TableDataDiff(table_a.data, table_b.data)
+        assert diff_identical.identical
+
+        qd_values_diff = np.array(
+            [
+                np.asarray([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64),
+                np.asarray([[5.0, 6.0], [7.5, 8.0]], dtype=np.float64),
+            ],
+            dtype=object,
+        )
+        table_c = BinTableHDU.from_columns(
+            [
+                Column(name="PD", format="PD()", dim="(2,2)", array=pd_values),
+                Column(name="QD", format="QD()", dim="(2,2)", array=qd_values_diff),
+            ]
+        )
+
+        diff_multidim = TableDataDiff(table_a.data, table_c.data, rtol=1e-5, atol=1e-8)
+        assert not diff_multidim.identical
+        assert diff_multidim.diff_values[0][0] == ("QD", 1)
+
     def test_identical_files_basic(self):
         """Test identicality of two simple, extensionless files."""
 

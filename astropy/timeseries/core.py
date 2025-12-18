@@ -67,18 +67,46 @@ class BaseTimeSeries(QTable):
                 required_columns = self._required_columns
 
             plural = 's' if len(required_columns) > 1 else ''
+            required_count = len(required_columns)
 
             if not self._required_columns_relax and len(self.colnames) == 0:
 
-                raise ValueError("{} object is invalid - expected '{}' "
-                                 "as the first column{} but time series has no columns"
-                                 .format(self.__class__.__name__, required_columns[0], plural))
+                if required_count == 1:
+                    raise ValueError("{} object is invalid - expected '{}' "
+                                     "as the first column{} but time series has no columns"
+                                     .format(self.__class__.__name__, required_columns[0], plural))
 
-            elif self.colnames[:len(required_columns)] != required_columns:
+                raise ValueError(
+                    "{} object is invalid - required {!r} as the first columns "
+                    "but time series has no columns".format(
+                        self.__class__.__name__,
+                        required_columns,
+                    )
+                )
 
-                raise ValueError("{} object is invalid - expected '{}' "
-                                 "as the first column{} but found '{}'"
-                                 .format(self.__class__.__name__, required_columns[0], plural, self.colnames[0]))
+            actual_prefix = self.colnames[:required_count]
+
+            if actual_prefix != required_columns:
+
+                if required_count == 1:
+                    raise ValueError(
+                        "{} object is invalid - expected '{}' "
+                        "as the first column{} but found '{}'".format(
+                            self.__class__.__name__,
+                            required_columns[0],
+                            plural,
+                            self.colnames[0],
+                        )
+                    )
+
+                raise ValueError(
+                    "{} object is invalid - required {!r} as the first columns "
+                    "but found {!r}".format(
+                        self.__class__.__name__,
+                        required_columns,
+                        actual_prefix,
+                    )
+                )
 
             if (self._required_columns_relax
                     and self._required_columns == self.colnames[:len(self._required_columns)]):

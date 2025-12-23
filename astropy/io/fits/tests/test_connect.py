@@ -7,7 +7,7 @@ import pytest
 from numpy.testing import assert_allclose, assert_array_equal
 
 from astropy import units as u
-from astropy.io import fits
+from astropy.io import fits, registry
 from astropy.io.fits import BinTableHDU, HDUList, ImageHDU, PrimaryHDU, table_to_hdu
 from astropy.io.fits.column import (
     _fortran_to_python_format,
@@ -75,6 +75,12 @@ def test_is_fits_read_signature_mismatch():
 
 def test_is_fits_read_without_args_guard():
     assert is_fits("read", None, None) is None
+
+
+def test_identify_format_read_with_hdulist_arg():
+    hdu_list = HDUList([PrimaryHDU()])
+    identified = registry.identify_format("read", Table, None, None, [hdu_list], {})
+    assert identified == ["fits"]
 
 
 class TestSingleTable:

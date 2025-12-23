@@ -5,10 +5,11 @@ import os
 from datetime import datetime
 import locale
 
-import pytest
 import numpy as np
+import pytest
 
 from .. import data, misc
+from ..decorators import classproperty
 
 
 def test_isiterable():
@@ -74,7 +75,7 @@ def test_JsonCustomEncoder():
     assert newd == tmpd
 
 
-def test_inherit_docstrings():
+def test_inherit_docstrings_method_override_inherits_docstring():
     class Base(metaclass=misc.InheritDocstrings):
         def __call__(self, *args):
             "FOO"
@@ -84,9 +85,185 @@ def test_inherit_docstrings():
         def __call__(self, *args):
             pass
 
-    if Base.__call__.__doc__ is not None:
-        # TODO: Maybe if __doc__ is None this test should be skipped instead?
-        assert Subclass.__call__.__doc__ == "FOO"
+    if Base.__call__.__doc__ is None:
+        pytest.skip("docstrings stripped by -OO")
+    assert Subclass.__call__.__doc__ == "FOO"
+
+
+def test_inherit_docstrings_property_override_inherits_docstring():
+    class Base(metaclass=misc.InheritDocstrings):
+        @property
+        def value(self):
+            "Base value docstring"
+            return 1
+
+    if Base.value.__doc__ is None:
+        pytest.skip("docstrings stripped by -OO")
+
+    class Subclass(Base):
+        @property
+        def value(self):
+            return 2
+
+    assert Subclass.value.__doc__ == "Base value docstring"
+
+
+def test_inherit_docstrings_property_not_overridden_preserves_docstring():
+    class Base(metaclass=misc.InheritDocstrings):
+        @property
+        def bar(self):
+            "Bar doc."
+            return 3
+
+    if Base.bar.__doc__ is None:
+        pytest.skip("docstrings stripped by -OO")
+
+    class Sub(Base):
+        pass
+
+    assert Sub.bar.__doc__ == "Bar doc."
+
+
+def test_inherit_docstrings_property_override_preserves_getter_setter():
+    class Base(metaclass=misc.InheritDocstrings):
+        def __init__(self):
+            self._value = 0
+
+        @property
+        def value(self):
+            "RW doc"
+            return self._value
+
+        @value.setter
+        def value(self, v):
+            self._value = v
+
+    if Base.value.__doc__ is None:
+        pytest.skip("docstrings stripped by -OO")
+
+    class Sub(Base):
+        @property
+        def value(self):
+            return self._value * 2
+
+        @value.setter
+        def value(self, new_value):
+            self._value = new_value + 1
+
+    inst = Sub()
+    inst.value = 3
+    assert inst._value == 4
+    assert inst.value == 8
+    assert Sub.value.__doc__ == "RW doc"
+
+
+def test_inherit_docstrings_property_mro():
+    class A(metaclass=misc.InheritDocstrings):
+        @property
+        def x(self):
+            "doc from A"
+            return 1
+
+    class B:
+        @property
+        def x(self):
+            "doc from B"
+            return 2
+
+    if A.x.__doc__ is None or B.x.__doc__ is None:
+        pytest.skip("docstrings stripped by -OO")
+
+    class C(A, B):
+        @property
+        def x(self):
+            return 3
+
+    assert C.x.__doc__ == "doc from A"
+
+
+def test_inherit_docstrings_property_private_untouched():
+    class Base(metaclass=misc.InheritDocstrings):
+        @property
+        def _hidden(self):
+            "hidden doc"
+            return 1
+
+    class Sub(Base):
+        @property
+        def _hidden(self):
+            return 2
+
+    assert Sub._hidden.__doc__ is None
+
+
+def test_inherit_docstrings_property_subclass_doc_preserved():
+    class Base(metaclass=misc.InheritDocstrings):
+        @property
+        def y(self):
+            "base doc"
+            return 1
+
+    class Sub(Base):
+        @property
+        def y(self):
+            "sub doc"
+            return 2
+
+    assert Sub.y.__doc__ == "sub doc"
+
+
+def test_inherit_docstrings_property_from_method():
+    class Base(metaclass=misc.InheritDocstrings):
+        def z(self):
+            "method doc"
+            return 1
+
+    if Base.z.__doc__ is None:
+        pytest.skip("docstrings stripped by -OO")
+
+    class Sub(Base):
+        @property
+        def z(self):
+            return 2
+
+    assert Sub.z.__doc__ == "method doc"
+
+
+def test_inherit_docstrings_leaves_non_property_descriptors_untouched():
+    class Descriptor:
+        def __init__(self):
+            self.__doc__ = None
+
+        def __get__(self, instance, owner):
+            return 42
+
+    class Base(metaclass=misc.InheritDocstrings):
+        descriptor = Descriptor()
+        descriptor.__doc__ = "Descriptor doc."
+
+    class Sub(Base):
+        descriptor = Descriptor()
+
+    sub_descriptor = Sub.__dict__["descriptor"]
+    assert isinstance(sub_descriptor, Descriptor)
+    assert sub_descriptor.__doc__ is None
+
+
+def test_inherit_docstrings_classproperty_override_preserves_descriptor():
+    class Base(metaclass=misc.InheritDocstrings):
+        @classproperty
+        def value(cls):
+            "classproperty doc"
+            return 1
+
+    class Sub(Base):
+        @classproperty
+        def value(cls):
+            return 2
+
+    sub_descriptor = Sub.__dict__["value"]
+    assert isinstance(sub_descriptor, classproperty)
+    assert Sub.value == 2
 
 
 def test_set_locale():

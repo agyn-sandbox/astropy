@@ -38,7 +38,11 @@ latest version of this module.
 
 import contextlib
 import errno
-import imp
+# 'imp' was removed in Python 3.12; importlib provides compatible reload()
+try:
+    import importlib as imp  # minimal shim for imp.reload
+except Exception:  # pragma: no cover - very old Pythons
+    import imp  # fallback for ancient environments
 import io
 import locale
 import os
@@ -134,8 +138,16 @@ except:
 import pkg_resources
 
 from setuptools import Distribution
-from setuptools.package_index import PackageIndex
-from setuptools.sandbox import run_setup
+try:
+    # Deprecated/removed in newer setuptools; import lazily.
+    from setuptools.package_index import PackageIndex  # type: ignore
+except Exception:
+    PackageIndex = None  # Fallback disables PyPI upgrade path
+try:
+    from setuptools.sandbox import run_setup
+except Exception:
+    def run_setup(*args, **kwargs):
+        raise RuntimeError("setuptools.sandbox.run_setup unavailable")
 
 from distutils import log
 from distutils.debug import DEBUG
@@ -551,6 +563,8 @@ class _Bootstrapper(object):
         req = pkg_resources.Requirement.parse(
             '{0}>{1},<{2}'.format(DIST_NAME, dist.version, next_version))
 
+        if PackageIndex is None:
+            return None
         package_index = PackageIndex(index_url=self.index_url)
 
         upgrade = package_index.obtain(req)

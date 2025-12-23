@@ -527,6 +527,8 @@ class InheritDocstrings(type):
                  and len(key) > 4) or
                 not key.startswith('_'))
 
+        property_updates = []
+
         for key, val in dct.items():
             if (inspect.isfunction(val) and
                 is_public_member(key) and
@@ -536,6 +538,23 @@ class InheritDocstrings(type):
                     if super_method is not None:
                         val.__doc__ = super_method.__doc__
                         break
+            elif (type(val) is property and
+                  is_public_member(key) and
+                  val.__doc__ is None):
+                for base in cls.__mro__[1:]:
+                    base_attr = base.__dict__.get(key)
+                    if base_attr is None:
+                        continue
+                    if isinstance(base_attr, property) or callable(base_attr):
+                        base_doc = getattr(base_attr, '__doc__', None)
+                        if base_doc is not None:
+                            property_updates.append((key, val, base_doc))
+                            break
+
+        for key, current_prop, doc in property_updates:
+            inherited = property(current_prop.fget, current_prop.fset,
+                                 current_prop.fdel, doc)
+            setattr(cls, key, inherited)
 
         super().__init__(name, bases, dct)
 

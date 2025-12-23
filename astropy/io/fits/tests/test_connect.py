@@ -1,4 +1,5 @@
 import gc
+import io
 import warnings
 
 import numpy as np
@@ -13,6 +14,8 @@ from astropy.io.fits.column import (
     _parse_tdisp_format,
     python_to_tdisp,
 )
+from astropy.io.fits.connect import is_fits
+from astropy.io.fits.hdu.hdulist import FITS_SIGNATURE
 from astropy.io.tests.mixin_columns import compare_attrs, mixin_cols, serialized_names
 from astropy.table import Column, QTable, Table
 from astropy.table.table_helpers import simple_table
@@ -51,6 +54,27 @@ mixin_cols = {
 
 def equal_data(a, b):
     return all(np.all(a[name] == b[name]) for name in a.dtype.names)
+
+
+def test_is_fits_write_non_fits_path():
+    assert is_fits("write", "example.ecsv", None) is None
+
+
+def test_is_fits_write_with_fits_extension():
+    assert is_fits("write", "example.fits", None) is True
+
+
+def test_is_fits_read_with_signature():
+    fileobj = io.BytesIO(FITS_SIGNATURE + b" remainder")
+    assert is_fits("read", None, fileobj) is True
+
+
+def test_is_fits_read_signature_mismatch():
+    assert is_fits("read", None, io.BytesIO(b"not fits")) is False
+
+
+def test_is_fits_read_without_args_guard():
+    assert is_fits("read", None, None) is None
 
 
 class TestSingleTable:

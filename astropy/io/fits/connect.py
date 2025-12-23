@@ -40,6 +40,15 @@ REMOVE_KEYWORDS = [
 # Column-specific keywords regex
 COLUMN_KEYWORD_REGEXP = "(" + "|".join(KEYWORD_NAMES) + ")[0-9]+"
 
+FITS_EXTENSIONS = (
+    ".fits",
+    ".fits.gz",
+    ".fit",
+    ".fit.gz",
+    ".fts",
+    ".fts.gz",
+)
+
 
 def is_column_keyword(keyword):
     return re.match(COLUMN_KEYWORD_REGEXP, keyword) is not None
@@ -47,29 +56,53 @@ def is_column_keyword(keyword):
 
 def is_fits(origin, filepath, fileobj, *args, **kwargs):
     """
-    Determine whether `origin` is a FITS file.
+    Determine whether the provided inputs correspond to FITS data.
 
     Parameters
     ----------
-    origin : str or readable file-like
-        Path or file object containing a potential FITS file.
+    origin : {"read", "write"}
+        Operation being performed.
+    filepath : str or path-like, optional
+        Path associated with the operation, if available.
+    fileobj : file-like, optional
+        Open file object to inspect when reading.
+    *args, **kwargs
+        Additional arguments accepted for compatibility; unused.
 
     Returns
     -------
-    is_fits : bool
-        Returns `True` if the given file is a FITS file.
+    is_fits : bool or None
+        ``True`` when the inputs conclusively represent FITS data, ``False``
+        when a FITS signature check fails, and ``None`` when the format cannot
+        be determined.
     """
+
+    mode = (origin or "").lower()
+    is_read = mode == "read"
+    is_write = mode == "write"
+
     if fileobj is not None:
         pos = fileobj.tell()
-        sig = fileobj.read(30)
+        sig = fileobj.read(len(FITS_SIGNATURE))
         fileobj.seek(pos)
-        return sig == FITS_SIGNATURE
-    elif filepath is not None:
-        if filepath.lower().endswith(
-            (".fits", ".fits.gz", ".fit", ".fit.gz", ".fts", ".fts.gz")
-        ):
+        if sig == FITS_SIGNATURE:
             return True
-    return isinstance(args[0], (HDUList, TableHDU, BinTableHDU, GroupsHDU))
+        if is_read:
+            return False
+        return None
+
+    if filepath is not None:
+        filepath_lower = filepath.lower()
+        if filepath_lower.endswith(FITS_EXTENSIONS):
+            return True
+        if is_write:
+            return None
+
+    if is_read and len(args) > 0:
+        if isinstance(args[0], (HDUList, TableHDU, BinTableHDU, GroupsHDU)):
+            return True
+
+    return None
 
 
 def _decode_mixins(tbl):

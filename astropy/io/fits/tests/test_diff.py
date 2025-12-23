@@ -1,4 +1,7 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
+import io
+from contextlib import redirect_stdout
+
 import numpy as np
 import pytest
 
@@ -923,3 +926,106 @@ def test_rawdatadiff_diff_with_rtol(tmp_path):
 
     assert "...and at 1 more indices." in str1
     assert "...and at 1 more indices." not in str2
+
+
+def _object_array(rows, dtype):
+    return np.array([np.array(row, dtype=dtype) for row in rows], dtype=object)
+
+
+def _write_vla_table(path, columns):
+    table_hdu = fits.BinTableHDU.from_columns(columns)
+    fits.HDUList([fits.PrimaryHDU(), table_hdu]).writeto(path, overwrite=True)
+
+
+def test_vla_q_identical(tmp_path):
+    data = _object_array([[1.0, 2.5], [], [3.3]], dtype=np.float64)
+    column = Column(name="a", format="QD()", array=data)
+    path = tmp_path / "vla_q_identical.fits"
+    _write_vla_table(path, [column])
+
+    diff = FITSDiff(path, path)
+    assert diff.identical
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        fits.printdiff(str(path), str(path))
+    report = buffer.getvalue()
+    assert "No differences found." in report
+    assert "Data contains differences:" not in report
+
+
+def test_vla_q_nonidentical(tmp_path):
+    base = _object_array([[1.0, 2.0], [3.0], [4.0, 5.0, 6.0]], dtype=np.float64)
+    path_a = tmp_path / "vla_q_base.fits"
+    _write_vla_table(path_a, [Column(name="a", format="QD()", array=base)])
+
+    changed = _object_array([[1.0, 2.0], [3.5], [4.0, 5.0, 6.0]], dtype=np.float64)
+    path_b = tmp_path / "vla_q_changed.fits"
+    _write_vla_table(path_b, [Column(name="a", format="QD()", array=changed)])
+
+    diff = FITSDiff(path_a, path_b)
+    assert not diff.identical
+    report = diff.report()
+    assert "Column a data differs in row 1:" in report
+    assert "1 different table data element(s) found" in report
+
+
+def test_vla_p_regression(tmp_path):
+    base = _object_array([[0.1], [0.2, 0.3], [0.4]], dtype=np.float64)
+    path_a = tmp_path / "vla_p_base.fits"
+    _write_vla_table(path_a, [Column(name="a", format="PD()", array=base)])
+
+    identical_diff = FITSDiff(path_a, path_a)
+    assert identical_diff.identical
+
+    changed = _object_array([[0.1], [0.25, 0.3], [0.4]], dtype=np.float64)
+    path_b = tmp_path / "vla_p_changed.fits"
+    _write_vla_table(path_b, [Column(name="a", format="PD()", array=changed)])
+
+    diff = FITSDiff(path_a, path_b)
+    assert not diff.identical
+    report = diff.report()
+    assert "Column a data differs in row 1:" in report
+    assert "1 different table data element(s) found" in report
+
+
+def test_vla_q_multilength(tmp_path):
+    data = _object_array([[1, 2, 3], [4], [5, 6, 7, 8, 9]], dtype=np.int32)
+    column = Column(name="a", format="QJ()", array=data)
+    path = tmp_path / "vla_q_multilength.fits"
+    _write_vla_table(path, [column])
+
+    diff = FITSDiff(path, path)
+    assert diff.identical
+
+
+def test_vla_mixed_p_q(tmp_path):
+    q_data = _object_array([[1.0, 1.5], [2.0], [3.0, 3.5]], dtype=np.float64)
+    p_data = _object_array([[9.0], [8.0, 7.0], [6.0]], dtype=np.float64)
+    path_a = tmp_path / "vla_mixed_a.fits"
+    _write_vla_table(
+        path_a,
+        [
+            Column(name="a", format="QD()", array=q_data),
+            Column(name="b", format="PD()", array=p_data),
+        ],
+    )
+
+    diff_identical = FITSDiff(path_a, path_a)
+    assert diff_identical.identical
+
+    changed_p = _object_array([[9.0], [8.0, 7.0], [6.5]], dtype=np.float64)
+    path_b = tmp_path / "vla_mixed_b.fits"
+    _write_vla_table(
+        path_b,
+        [
+            Column(name="a", format="QD()", array=q_data),
+            Column(name="b", format="PD()", array=changed_p),
+        ],
+    )
+
+    diff = FITSDiff(path_a, path_b)
+    assert not diff.identical
+    report = diff.report()
+    assert "Column b data differs in row 2:" in report
+    assert "1 different table data element(s) found" in report

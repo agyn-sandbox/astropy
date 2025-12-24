@@ -1,4 +1,5 @@
 import gc
+import io
 import warnings
 
 import numpy as np
@@ -6,13 +7,15 @@ import pytest
 from numpy.testing import assert_allclose, assert_array_equal
 
 from astropy import units as u
-from astropy.io import fits
+from astropy.io import fits, registry
 from astropy.io.fits import BinTableHDU, HDUList, ImageHDU, PrimaryHDU, table_to_hdu
 from astropy.io.fits.column import (
     _fortran_to_python_format,
     _parse_tdisp_format,
     python_to_tdisp,
 )
+from astropy.io.fits.connect import is_fits
+from astropy.io.fits.hdu.hdulist import FITS_SIGNATURE
 from astropy.io.tests.mixin_columns import compare_attrs, mixin_cols, serialized_names
 from astropy.table import Column, QTable, Table
 from astropy.table.table_helpers import simple_table
@@ -51,6 +54,33 @@ mixin_cols = {
 
 def equal_data(a, b):
     return all(np.all(a[name] == b[name]) for name in a.dtype.names)
+
+
+def test_is_fits_write_non_fits_path():
+    assert is_fits("write", "example.ecsv", None) is None
+
+
+def test_is_fits_write_with_fits_extension():
+    assert is_fits("write", "example.fits", None) is True
+
+
+def test_is_fits_read_with_signature():
+    fileobj = io.BytesIO(FITS_SIGNATURE + b" remainder")
+    assert is_fits("read", None, fileobj) is True
+
+
+def test_is_fits_read_signature_mismatch():
+    assert is_fits("read", None, io.BytesIO(b"not fits")) is False
+
+
+def test_is_fits_read_without_args_guard():
+    assert is_fits("read", None, None) is None
+
+
+def test_identify_format_read_with_hdulist_arg():
+    hdu_list = HDUList([PrimaryHDU()])
+    identified = registry.identify_format("read", Table, None, None, [hdu_list], {})
+    assert identified == ["fits"]
 
 
 class TestSingleTable:

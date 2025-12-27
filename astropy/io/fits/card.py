@@ -1298,34 +1298,86 @@ def _format_value(value):
 
 
 def _format_float(value):
-    """Format a floating number to make sure it gets the decimal point."""
-    value_str = f"{value:.16G}"
-    if "." not in value_str and "E" not in value_str:
-        value_str += ".0"
-    elif "E" in value_str:
-        # On some Windows builds of Python (and possibly other platforms?) the
-        # exponent is zero-padded out to, it seems, three digits.  Normalize
-        # the format to pad only to two digits.
-        significand, exponent = value_str.split("E")
-        if exponent[0] in ("+", "-"):
-            sign = exponent[0]
-            exponent = exponent[1:]
-        else:
+    """Format a floating number ensuring the result fits 20 characters."""
+
+    def _normalize(token):
+        if not token:
+            return None
+
+        token = token.strip()
+        lower = token.lower()
+        if lower in {"nan", "inf", "+inf", "-inf"}:
+            return lower.upper()
+
+        if "e" in token or "E" in token:
+            significand, exponent = re.split("[eE]", token, maxsplit=1)
+            if "." not in significand:
+                significand = f"{significand}.0"
             sign = ""
-        value_str = f"{significand}E{sign}{int(exponent):02d}"
-
-    # Limit the value string to at most 20 characters.
-    str_len = len(value_str)
-
-    if str_len > 20:
-        idx = value_str.find("E")
-
-        if idx < 0:
-            value_str = value_str[:20]
+            digits = exponent
+            if digits and digits[0] in "+-":
+                sign = digits[0]
+                digits = digits[1:]
+            digits = digits.lstrip("0") or "0"
+            if len(digits) < 2:
+                digits = digits.rjust(2, "0")
+            token = f"{significand}E{sign}{digits}"
         else:
-            value_str = value_str[: 20 - (str_len - idx)] + value_str[idx:]
+            if "." not in token:
+                token = f"{token}.0"
 
-    return value_str
+        return token
+
+    def _prepare(token):
+        normalized = _normalize(token)
+        if not normalized:
+            return None
+        if " " in normalized:
+            return None
+        if len(normalized) > 20 and "E" in normalized:
+            idx = normalized.find("E")
+            extra = len(normalized) - 20
+            if extra < idx:
+                significand = normalized[: idx - extra]
+                if significand.endswith("."):
+                    significand = f"{significand}0"
+                normalized = f"{significand}{normalized[idx:]}"
+        if len(normalized) > 20:
+            return None
+        return normalized
+
+    candidate = _prepare(str(value))
+    if candidate is not None:
+        return candidate
+
+    best_fit = None
+    best_error = None
+
+    for precision in range(17, 0, -1):
+        candidate = _prepare(format(value, f".{precision}G"))
+        if candidate is None:
+            continue
+        try:
+            candidate_value = float(candidate)
+        except (OverflowError, ValueError):
+            continue
+        if candidate_value == value:
+            return candidate
+        error = abs(candidate_value - value)
+        if best_fit is None or error < best_error or (
+            error == best_error and len(candidate) > len(best_fit)
+        ):
+            best_fit = candidate
+            best_error = error
+
+    if best_fit is not None:
+        return best_fit
+
+    fallback = _prepare(f"{value:.16G}")
+    if fallback is not None:
+        return fallback
+
+    return str(value)[:20]
 
 
 def _pad(input):

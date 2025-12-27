@@ -57,10 +57,16 @@ class RST(FixedWidth):
     data_class = SimpleRSTData
     header_class = SimpleRSTHeader
 
-    def __init__(self):
-        super().__init__(delimiter_pad=None, bookend=False)
+    def __init__(self, header_rows=None):
+        super().__init__(
+            delimiter_pad=None, bookend=False, header_rows=header_rows
+        )
 
     def write(self, lines):
         lines = super().write(lines)
-        lines = [lines[1]] + lines + [lines[1]]
+        header_rows = getattr(self.header, "header_rows", ["name"])
+        n_hdr = len(header_rows)
+        if self.header.position_line is not None:
+            separator = lines[n_hdr]
+            lines = [separator] + lines + [separator]
         return lines

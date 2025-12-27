@@ -2,7 +2,9 @@
 
 from io import StringIO
 
+import astropy.units as u
 from astropy.io import ascii
+from astropy.table import MaskedColumn, QTable
 
 from .common import assert_almost_equal, assert_equal
 
@@ -185,3 +187,108 @@ Col1      Col2 Col3 Col4
 ==== ========= ==== ====
 """,
     )
+
+
+def test_rst_header_rows_name_unit():
+    tbl = QTable(
+        {
+            "wave": [350, 950] * u.nm,
+            "response": [0.7, 1.2] * u.count,
+        }
+    )
+    out = StringIO()
+    ascii.write(tbl, out, format="rst", header_rows=["name", "unit"])
+    expected = (
+        "===== ========\n"
+        " wave response\n"
+        "   nm       ct\n"
+        "===== ========\n"
+        "350.0      0.7\n"
+        "950.0      1.2\n"
+        "===== ========\n"
+    )
+    assert_equal_splitlines(out.getvalue(), expected)
+
+
+def test_rst_header_rows_missing_units():
+    tbl = QTable(
+        {
+            "wave": [350, 950] * u.nm,
+            "response": [0.7, 1.2],
+        }
+    )
+    out = StringIO()
+    ascii.write(tbl, out, format="rst", header_rows=["name", "unit"])
+    expected = (
+        "===== ========\n"
+        " wave response\n"
+        "   nm         \n"
+        "===== ========\n"
+        "350.0      0.7\n"
+        "950.0      1.2\n"
+        "===== ========\n"
+    )
+    assert_equal_splitlines(out.getvalue(), expected)
+
+
+def test_rst_header_rows_unicode():
+    tbl = QTable(
+        {
+            "wave": [350, 950] * u.AA,
+            "flux": [2.3, 3.1] * u.Unit("erg / (s cm2)"),
+        }
+    )
+    out = StringIO()
+    ascii.write(tbl, out, format="rst", header_rows=["name", "unit"])
+    expected = (
+        "======== =============\n"
+        "    wave          flux\n"
+        "Angstrom erg / (cm2 s)\n"
+        "======== =============\n"
+        "   350.0           2.3\n"
+        "   950.0           3.1\n"
+        "======== =============\n"
+    )
+    assert_equal_splitlines(out.getvalue(), expected)
+
+
+def test_rst_header_rows_masked():
+    response = MaskedColumn([0.7, 1.2], mask=[False, True], unit=u.count)
+    tbl = QTable(
+        {
+            "wave": [350, 950] * u.nm,
+            "response": response,
+        }
+    )
+    out = StringIO()
+    ascii.write(tbl, out, format="rst", header_rows=["name", "unit"])
+    expected = (
+        "===== ========\n"
+        " wave response\n"
+        "   nm       ct\n"
+        "===== ========\n"
+        "350.0      0.7\n"
+        "950.0         \n"
+        "===== ========\n"
+    )
+    assert_equal_splitlines(out.getvalue(), expected)
+
+
+def test_rst_backward_compat_no_header_rows():
+    tbl = QTable(
+        {
+            "wave": [350, 950],
+            "response": [0.7, 1.2],
+        }
+    )
+    out = StringIO()
+    ascii.write(tbl, out, format="rst")
+    expected = (
+        "==== ========\n"
+        "wave response\n"
+        "==== ========\n"
+        " 350      0.7\n"
+        " 950      1.2\n"
+        "==== ========\n"
+    )
+    assert_equal_splitlines(out.getvalue(), expected)

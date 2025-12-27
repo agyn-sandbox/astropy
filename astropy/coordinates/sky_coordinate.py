@@ -1,4 +1,5 @@
 import copy
+import inspect
 import operator
 import re
 import warnings
@@ -871,6 +872,13 @@ class SkyCoord(ShapedLikeNDArray):
         Overrides getattr to return coordinates that this can be transformed
         to, based on the alias attr in the primary transform graph.
         """
+        try:
+            inspect.getattr_static(self, attr)
+        except AttributeError:
+            pass
+        else:
+            return object.__getattribute__(self, attr)
+
         if "_sky_coord_frame" in self.__dict__:
             if self._is_name(attr):
                 return self  # Should this be a deepcopy of self?

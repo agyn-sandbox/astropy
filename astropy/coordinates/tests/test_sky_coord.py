@@ -2165,3 +2165,35 @@ def test_match_to_catalog_3d_and_sky():
     npt.assert_array_equal(idx, [0, 1, 2, 3])
     assert_allclose(angle, 0 * u.deg, atol=1e-14 * u.deg, rtol=0)
     assert_allclose(distance, 0 * u.kpc, atol=1e-14 * u.kpc, rtol=0)
+
+
+def test_subclass_property_attribute_error_propagates():
+    class CustomSkyCoord(SkyCoord):
+        @property
+        def prop(self):
+            return self.random_attr
+
+    coord = CustomSkyCoord(RA, DEC, frame="icrs")
+
+    with pytest.raises(AttributeError) as excinfo:
+        coord.prop
+
+    message = str(excinfo.value)
+    assert "random_attr" in message
+    assert "prop" not in message
+
+
+def test_transform_alias_access_unchanged():
+    coord = SkyCoord(RA, DEC, frame="galactic")
+
+    transformed = coord.icrs
+
+    assert isinstance(transformed, SkyCoord)
+    assert transformed.frame.name == "icrs"
+
+
+def test_frame_attribute_delegation_unchanged():
+    obstime = Time("J2010")
+    coord = SkyCoord(RA, DEC, frame="fk5", obstime=obstime)
+
+    assert coord.obstime is obstime

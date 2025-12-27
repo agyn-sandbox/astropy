@@ -2,6 +2,7 @@
 
 import collections
 import copy
+import sys
 import warnings
 from io import BytesIO, StringIO
 
@@ -9,7 +10,7 @@ import numpy as np
 import pytest
 
 from astropy.io import fits
-from astropy.io.fits.card import _pad
+from astropy.io.fits.card import _format_float, _pad
 from astropy.io.fits.header import _pad_length
 from astropy.io.fits.util import encode_ascii
 from astropy.io.fits.verify import VerifyError, VerifyWarning
@@ -62,6 +63,64 @@ def test_init_with_ordereddict():
     h1 = fits.Header(dict1)
     # Check that the order is preserved of the initial list
     assert all(h1[val] == list1[i][1] for i, val in enumerate(h1))
+
+
+def test_card_float_shortest_roundtrip_no_truncation():
+    comment = "[m] radius arround actuator to avoid"
+    with warnings.catch_warnings(record=True) as caught:
+        card = fits.Card("HIERARCH ESO IFM CL RADIUS", 0.009125, comment)
+
+    verify_warnings = [w for w in caught if issubclass(w.category, VerifyWarning)]
+    assert verify_warnings == []
+
+    value_field = (
+        str(card).split("=", 1)[1].split("/", 1)[0].strip()
+    )
+    assert value_field == "0.009125"
+    assert card.comment == comment
+
+
+@pytest.mark.parametrize("exponent", (-60, 0, 60))
+def test_card_float_boundary_roundtrip(exponent):
+    value = (1 - 2 ** -53) * (2 ** exponent)
+    card = fits.Card("TEST", value)
+
+    value_field = (
+        str(card).split("=", 1)[1].split("/", 1)[0].strip()
+    )
+    expected = str(value).replace("e", "E")
+
+    assert value_field == expected
+
+    parsed = fits.Card.fromstring(str(card))
+    assert parsed.value == value
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    (
+        (float("nan"), "NAN.0"),
+        (float("inf"), "INF.0"),
+        (-float("inf"), "-INF.0"),
+    ),
+)
+def test_format_float_special_tokens_preserved(value, expected):
+    assert _format_float(value) == expected
+
+
+def test_card_float_long_value_prefers_str():
+    value = sys.float_info.max
+    card = fits.Card("TEST", value)
+
+    value_field = (
+        str(card).split("=", 1)[1].split("/", 1)[0].strip()
+    )
+    expected = str(value).replace("e", "E")
+
+    assert value_field == expected
+
+    parsed = fits.Card.fromstring(str(card))
+    assert parsed.value == value
 
 
 class TestHeaderFunctions(FitsTestCase):

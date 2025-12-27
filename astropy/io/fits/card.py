@@ -1,5 +1,6 @@
 # Licensed under a 3-clause BSD style license - see PYFITS.rst
 
+import math
 import re
 import warnings
 
@@ -1298,34 +1299,84 @@ def _format_value(value):
 
 
 def _format_float(value):
-    """Format a floating number to make sure it gets the decimal point."""
-    value_str = f"{value:.16G}"
-    if "." not in value_str and "E" not in value_str:
-        value_str += ".0"
-    elif "E" in value_str:
-        # On some Windows builds of Python (and possibly other platforms?) the
-        # exponent is zero-padded out to, it seems, three digits.  Normalize
-        # the format to pad only to two digits.
-        significand, exponent = value_str.split("E")
-        if exponent[0] in ("+", "-"):
-            sign = exponent[0]
-            exponent = exponent[1:]
-        else:
+    """Format a floating number ensuring the result fits 20 characters."""
+
+    def _normalize(token):
+        if not token:
+            return None
+
+        token = token.strip()
+        lower = token.lower()
+        if lower in {"nan", "inf", "+inf", "-inf"}:
+            return lower.upper()
+
+        if "e" in token or "E" in token:
+            significand, exponent = re.split("[eE]", token, maxsplit=1)
+            if "." not in significand:
+                significand = f"{significand}.0"
             sign = ""
-        value_str = f"{significand}E{sign}{int(exponent):02d}"
-
-    # Limit the value string to at most 20 characters.
-    str_len = len(value_str)
-
-    if str_len > 20:
-        idx = value_str.find("E")
-
-        if idx < 0:
-            value_str = value_str[:20]
+            digits = exponent
+            if digits and digits[0] in "+-":
+                sign = digits[0]
+                digits = digits[1:]
+            digits = digits.lstrip("0") or "0"
+            if len(digits) < 2:
+                digits = digits.rjust(2, "0")
+            token = f"{significand}E{sign}{digits}"
         else:
-            value_str = value_str[: 20 - (str_len - idx)] + value_str[idx:]
+            if "." not in token:
+                token = f"{token}.0"
 
-    return value_str
+        return token
+
+    def _prepare(token):
+        normalized = _normalize(token)
+        if not normalized:
+            return None
+        if " " in normalized:
+            return None
+        if len(normalized) > 20 and "E" in normalized:
+            idx = normalized.find("E")
+            extra = len(normalized) - 20
+            if extra < idx:
+                significand = normalized[: idx - extra]
+                if significand.endswith("."):
+                    significand = f"{significand}0"
+                normalized = f"{significand}{normalized[idx:]}"
+        if len(normalized) > 20:
+            return None
+        return normalized
+
+    def _round_trips(token):
+        try:
+            parsed = float(token)
+        except (OverflowError, ValueError):
+            return False
+
+        if math.isnan(value):
+            return math.isnan(parsed)
+
+        return parsed == value
+
+    candidate = _prepare(str(value))
+    if candidate is not None and _round_trips(candidate):
+        return candidate
+
+    for precision in range(17, 0, -1):
+        candidate = _prepare(format(value, f".{precision}G"))
+        if candidate is None:
+            continue
+        if _round_trips(candidate):
+            return candidate
+
+    fallback = _prepare(f"{value:.16G}")
+    if fallback is not None and _round_trips(fallback):
+        return fallback
+
+    raise ValueError(
+        "Cannot represent float value within 20 characters for FITS card: "
+        f"{value!r}"
+    )
 
 
 def _pad(input):

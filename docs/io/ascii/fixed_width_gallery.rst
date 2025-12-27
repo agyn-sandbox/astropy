@@ -288,6 +288,28 @@ Fixed Width Two Line
 
 ..
   EXAMPLE START
+  Custom Header Rows with RST
+
+::
+    >>> from astropy.table import QTable
+    >>> import astropy.units as u
+    >>> from astropy.io import ascii
+    >>> tbl = QTable({"wave": [350, 950] * u.nm,
+    ...               "response": [0.7, 1.2] * u.count})
+    >>> ascii.write(tbl, format="rst", header_rows=["name", "unit"])
+    ===== ========
+     wave response
+       nm       ct
+    ===== ========
+    350.0      0.7
+    950.0      1.2
+    ===== ========
+
+..
+  EXAMPLE END
+
+..
+  EXAMPLE START
   Reading a reStructuredText Table
 
 **reStructuredText table:**

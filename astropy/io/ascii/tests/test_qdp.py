@@ -139,6 +139,31 @@ def test_read_example():
         assert np.allclose(col1, col2, equal_nan=True)
 
 
+def test_lowercase_read_commands(tmp_path):
+    example_qdp = """
+        ! Lowercase commands describing error columns
+        read terr 1
+        read serr 2
+        ! Columns: x, x errors, y, y error
+        1.0 0.1 -0.2 5.0 0.5
+        2.0 0.2 -0.3 6.0 0.6
+        NO NO NO NO NO
+        """
+
+    path = tmp_path / "lowercase.qdp"
+
+    with open(path, "w") as fp:
+        print(example_qdp, file=fp)
+
+    table = Table.read(path, format="ascii.qdp", names=["x", "y"], table_id=0)
+
+    assert np.allclose(table["x"], [1.0, 2.0])
+    assert np.allclose(table["x_perr"], [0.1, 0.2])
+    assert np.allclose(table["x_nerr"], [-0.2, -0.3])
+    assert np.allclose(table["y"], [5.0, 6.0])
+    assert np.allclose(table["y_err"], [0.5, 0.6])
+
+
 def test_roundtrip_example(tmp_path):
     example_qdp = """
         ! Initial comment line 1

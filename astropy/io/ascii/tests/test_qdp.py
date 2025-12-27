@@ -1,3 +1,5 @@
+import textwrap
+
 import numpy as np
 import pytest
 
@@ -5,6 +7,121 @@ from astropy.io import ascii
 from astropy.io.ascii.qdp import _get_lines_from_file, _read_table_qdp, _write_table_qdp
 from astropy.table import Column, MaskedColumn, Table
 from astropy.utils.exceptions import AstropyUserWarning
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    ["read serr 1 2", "ReAd SeRr 1 2"],
+    ids=["lower", "mixed"],
+)
+def test_qdp_read_serr_case_insensitive(command_line):
+    qdp_text = textwrap.dedent(
+        f"""
+        {command_line}
+        10 0.1 20 0.2
+        30 0.3 40 0.4
+        """
+    ).strip()
+
+    table = _read_table_qdp(qdp_text, names=["c1", "c2"], table_id=0)
+
+    assert table.colnames == ["c1", "c1_err", "c2", "c2_err"]
+    assert np.allclose(table["c1"], [10, 30])
+    assert np.allclose(table["c1_err"], [0.1, 0.3])
+    assert np.allclose(table["c2"], [20, 40])
+    assert np.allclose(table["c2_err"], [0.2, 0.4])
+
+
+@pytest.mark.parametrize(
+    (
+        "command_lines",
+        "names",
+        "expected_colnames",
+        "expected_checks",
+        "data_lines",
+    ),
+    [
+        (
+            ["read    terr    1     3"],
+            ["col1", "col2", "col3"],
+            [
+                "col1",
+                "col1_perr",
+                "col1_nerr",
+                "col2",
+                "col3",
+                "col3_perr",
+                "col3_nerr",
+            ],
+            {
+                "col1_perr": [0.1, 0.6],
+                "col1_nerr": [0.2, 0.7],
+                "col3": [3, 6],
+                "col3_perr": [0.4, 0.8],
+                "col3_nerr": [0.5, 0.9],
+            },
+            [
+                "1 0.1 0.2 2 3 0.4 0.5",
+                "4 0.6 0.7 5 6 0.8 0.9",
+            ],
+        ),
+        (
+            ["read serr 2", "read terr 1 ! trailing comment"],
+            ["x", "y"],
+            ["x", "x_perr", "x_nerr", "y", "y_err"],
+            {
+                "x_perr": [0.1, 0.4],
+                "x_nerr": [0.2, 0.5],
+                "y_err": [0.3, 0.6],
+            },
+            [
+                "10 0.1 0.2 20 0.3",
+                "30 0.4 0.5 40 0.6",
+            ],
+        ),
+    ],
+    ids=["terr_spacing", "inline_comment"],
+)
+def test_qdp_read_terr_variants(
+    command_lines, names, expected_colnames, expected_checks, data_lines
+):
+    qdp_text = textwrap.dedent(
+        "\n".join(command_lines + data_lines)
+    ).strip()
+
+    table = _read_table_qdp(qdp_text, names=names, table_id=0)
+
+    assert table.colnames == expected_colnames
+    for column, values in expected_checks.items():
+        assert np.allclose(table[column], values)
+
+
+def test_qdp_data_lines_without_commands_are_parsed():
+    qdp_text = textwrap.dedent(
+        """
+        ! pure data follows
+        1 2
+        3 4
+        """
+    ).strip()
+
+    table = _read_table_qdp(qdp_text, names=["c1", "c2"], table_id=0)
+
+    assert table.colnames == ["c1", "c2"]
+    assert np.allclose(table["c1"], [1, 3])
+    assert np.allclose(table["c2"], [2, 4])
+
+
+def test_qdp_unknown_command_raises():
+    qdp_text = textwrap.dedent(
+        """
+        read xerr 1 2
+        1 2 3 4
+        """
+    ).strip()
+
+    with pytest.raises(ValueError, match="Unrecognized QDP"):
+        _read_table_qdp(qdp_text, names=["a", "b"], table_id=0)
 
 
 def test_get_tables_from_qdp_file(tmp_path):

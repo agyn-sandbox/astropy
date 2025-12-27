@@ -60,7 +60,7 @@ def _line_type(line, delimiter=None):
     ValueError: Unrecognized QDP line...
     """
     _decimal_re = r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?"
-    _command_re = r"READ [TS]ERR(\s+[0-9]+)+"
+    _command_re = r"(?i:READ\s+[TS]ERR(?:\s+\d+)+)"
 
     sep = delimiter
     if delimiter is None:
@@ -293,11 +293,15 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
             # The first time I find data, I define err_specs
             if err_specs == {} and command_lines != "":
                 for cline in command_lines.strip().split("\n"):
+                    cline = cline.split("!", 1)[0]
                     command = cline.strip().split()
                     # This should never happen, but just in case.
                     if len(command) < 3:
                         continue
-                    err_specs[command[1].lower()] = [int(c) for c in command[2:]]
+                    keyword = command[1].lower()
+                    if keyword not in {"serr", "terr"}:
+                        raise ValueError(f"Unrecognized QDP command: {command[1]}")
+                    err_specs[keyword] = [int(c) for c in command[2:]]
             if colnames is None:
                 colnames = _interpret_err_lines(err_specs, ncol, names=input_colnames)
 
@@ -553,7 +557,8 @@ class QDP(basic.Basic):
     which mean that after data column 1 there will be two error columns
     containing its positive and engative error bars, then data column 2 without
     error bars, then column 3, then a column with the symmetric error of column
-    3, then the remaining data columns.
+    3, then the remaining data columns. The ``READ SERR`` and ``READ TERR``
+    commands are parsed case-insensitively.
 
     As explained below, table headers are highly inconsistent. Possible
     comments containing column names will be ignored and columns will be called

@@ -1,5 +1,6 @@
 # Licensed under a 3-clause BSD style license - see PYFITS.rst
 
+import math
 import re
 import warnings
 
@@ -1346,38 +1347,36 @@ def _format_float(value):
             return None
         return normalized
 
-    candidate = _prepare(str(value))
-    if candidate is not None:
-        return candidate
+    def _round_trips(token):
+        try:
+            parsed = float(token)
+        except (OverflowError, ValueError):
+            return False
 
-    best_fit = None
-    best_error = None
+        if math.isnan(value):
+            return math.isnan(parsed)
+
+        return parsed == value
+
+    candidate = _prepare(str(value))
+    if candidate is not None and _round_trips(candidate):
+        return candidate
 
     for precision in range(17, 0, -1):
         candidate = _prepare(format(value, f".{precision}G"))
         if candidate is None:
             continue
-        try:
-            candidate_value = float(candidate)
-        except (OverflowError, ValueError):
-            continue
-        if candidate_value == value:
+        if _round_trips(candidate):
             return candidate
-        error = abs(candidate_value - value)
-        if best_fit is None or error < best_error or (
-            error == best_error and len(candidate) > len(best_fit)
-        ):
-            best_fit = candidate
-            best_error = error
-
-    if best_fit is not None:
-        return best_fit
 
     fallback = _prepare(f"{value:.16G}")
-    if fallback is not None:
+    if fallback is not None and _round_trips(fallback):
         return fallback
 
-    return str(value)[:20]
+    raise ValueError(
+        "Cannot represent float value within 20 characters for FITS card: "
+        f"{value!r}"
+    )
 
 
 def _pad(input):

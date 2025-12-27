@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from astropy.io.fits import Card
@@ -17,19 +19,14 @@ def test_format_float_regression_value_preserved():
     assert "Gaussian width" in str(card)
 
 
-@pytest.mark.parametrize("exp", [-60, 0, 60])
-def test_format_float_stays_within_20_characters(exp):
-    value = (1 - 2 ** -53) * (2 ** exp)
+def test_format_float_stays_within_20_characters():
+    value = 0.9999999999999999
     token = _format_float(value)
     assert len(token) <= 20
+    assert float(token) == value
 
     card_value = _extract_card_value(Card("EDGE", value))
     assert card_value == token
-
-    rel_error = abs(float(token) - value)
-    if value:
-        rel_error /= abs(value)
-    assert rel_error <= 1e-12
 
 
 def test_format_float_exponent_normalization():
@@ -41,8 +38,25 @@ def test_format_float_adds_decimal_for_non_exponent():
 
 
 def test_complex_numbers_use_updated_formatter():
-    complex_value = complex((1 - 2 ** -53) * (2 ** 60), 0.009125)
+    complex_value = complex(1.234567890123456e10, 0.009125)
     card = Card("CMPLX", complex_value)
     text = str(card)
     assert _format_float(complex_value.real) in text
     assert _format_float(complex_value.imag) in text
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        (1 - 2 ** -53) * (2 ** 60),
+        (1 - 2 ** -53) * (2 ** -60),
+        sys.float_info.max,
+    ],
+)
+def test_format_float_raises_when_unrepresentable(value):
+    with pytest.raises(ValueError, match="Cannot represent float value"):
+        _format_float(value)
+
+    card = Card("BIG", value)
+    with pytest.raises(ValueError, match="Cannot represent float value"):
+        str(card)

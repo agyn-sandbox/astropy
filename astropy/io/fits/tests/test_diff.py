@@ -436,6 +436,90 @@ class TestDiff(FitsTestCase):
         diff = FITSDiff(hdula, hdulb)
         assert diff.identical
 
+    def test_vla_q_identical_self(self):
+        q_data = np.array(
+            [np.array([1, 2, 3], dtype=np.int64), np.array([4], dtype=np.int64)],
+            dtype=object,
+        )
+        q_column = Column("VLA_Q", format="QJ", array=q_data)
+        fixed_column = Column("CONST", format="J", array=[10, 20])
+
+        table_hdu = BinTableHDU.from_columns([q_column, fixed_column])
+        path = self.temp("vla_q_identical.fits")
+        table_hdu.writeto(path, overwrite=True)
+
+        diff = FITSDiff(path, path)
+        assert diff.identical
+        assert "No differences found." in diff.report()
+
+    def test_vla_q_positive_diff(self):
+        base_q_data = np.array(
+            [np.array([1.0, 2.0], dtype=np.float64), np.array([3.0], dtype=np.float64)],
+            dtype=object,
+        )
+        delta_q_data = np.array(
+            [np.array([1.0, 9.0], dtype=np.float64), np.array([3.0], dtype=np.float64)],
+            dtype=object,
+        )
+
+        column_a = Column("VLA_Q", format="QE", array=base_q_data)
+        column_b = Column("VLA_Q", format="QE", array=delta_q_data)
+        fixed_column = Column("CONST", format="E", array=[5.0, 6.0])
+
+        table_a = BinTableHDU.from_columns([column_a, fixed_column])
+        table_b = BinTableHDU.from_columns([column_b, fixed_column])
+
+        path_a = self.temp("vla_q_diff_a.fits")
+        path_b = self.temp("vla_q_diff_b.fits")
+        table_a.writeto(path_a, overwrite=True)
+        table_b.writeto(path_b, overwrite=True)
+
+        diff = FITSDiff(path_a, path_b, rtol=0, atol=0)
+        assert not diff.identical
+
+        report = diff.report()
+        assert "Column VLA_Q data differs in row 0:" in report
+
+    def test_vla_p_parity(self):
+        p_data = np.array(
+            [
+                np.array([[1, 2], [3, 4]], dtype=np.int16),
+                np.array([[5, 6]], dtype=np.int16),
+            ],
+            dtype=object,
+        )
+        p_column = Column("VLA_P", format="PI(2)", array=p_data)
+        fixed_column = Column("CONST", format="J", array=[1, 2])
+
+        table_hdu = BinTableHDU.from_columns([p_column, fixed_column])
+        path = self.temp("vla_p_identical.fits")
+        table_hdu.writeto(path, overwrite=True)
+
+        diff = FITSDiff(path, path)
+        assert diff.identical
+        assert "No differences found." in diff.report()
+
+    def test_vla_q_mixed_fixed(self):
+        q_data = np.array(
+            [
+                np.array([], dtype=np.int64),
+                np.array([10, 11], dtype=np.int64),
+                np.array([12], dtype=np.int64),
+            ],
+            dtype=object,
+        )
+        q_column = Column("VLA_Q", format="QJ", array=q_data)
+        flag_column = Column("FLAG", format="L", array=[True, False, True])
+        scalar_column = Column("VALUE", format="J", array=[100, 200, 300])
+
+        table_hdu = BinTableHDU.from_columns([q_column, flag_column, scalar_column])
+        path = self.temp("vla_q_mixed.fits")
+        table_hdu.writeto(path, overwrite=True)
+
+        diff = FITSDiff(path, path)
+        assert diff.identical
+        assert "No differences found." in diff.report()
+
     def test_ignore_table_fields(self):
         c1 = Column("A", format="L", array=[True, False])
         c2 = Column("B", format="X", array=[[0], [1]])

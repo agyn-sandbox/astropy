@@ -9,7 +9,13 @@ import sys
 from collections import defaultdict
 
 from setuptools import Extension
-from setuptools.dep_util import newer_group
+try:
+    from setuptools.dep_util import newer_group
+except Exception:
+    try:
+        from setuptools._distutils.dep_util import newer_group
+    except Exception:
+        from distutils.dep_util import newer_group
 
 import numpy
 

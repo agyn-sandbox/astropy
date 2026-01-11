@@ -1383,4 +1383,3 @@ def test_raise_method_not_supported():
     # raise error for unsupported propagation operations:
     with pytest.raises(ValueError):
         ndd1.uncertainty.propagate(np.mod, ndd2, result, correlation)
-# CI trigger: no-op change

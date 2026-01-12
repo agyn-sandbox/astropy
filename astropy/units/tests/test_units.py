@@ -198,6 +198,23 @@ def test_unknown_unit3():
         unit5 = u.Unit(None)
 
 
+def test_unrecognized_compare_with_none():
+    x = u.Unit('asdf', parse_strict='silent')
+    assert not (x == None)  # noqa: E711
+    assert x != None  # noqa: E711
+
+
+def test_unrecognized_equality_with_string():
+    x = u.Unit('asdf', parse_strict='silent')
+    assert x == 'asdf'
+    assert x != 'qwer'
+
+
+def test_unrecognized_compare_with_non_unit_types():
+    x = u.Unit('asdf', parse_strict='silent')
+    assert not (x == object())
+
+
 @raises(TypeError)
 def test_invalid_scale():
     x = ['a', 'b', 'c'] * u.m

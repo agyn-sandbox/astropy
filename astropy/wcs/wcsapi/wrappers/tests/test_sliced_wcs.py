@@ -899,3 +899,67 @@ def test_pixel_to_world_values_different_int_types():
     for int_coord, np64_coord in zip(int_sliced.pixel_to_world_values(*pixel_arrays),
                                      np64_sliced.pixel_to_world_values(*pixel_arrays)):
         assert all(int_coord == np64_coord)
+
+
+# --- New tests for spectral-spatial mixing via PC ---
+
+def build_coupled_wcs_pc_mix():
+    """
+    Build a simple 3D linear WCS with PC mixing between a spatial
+    world axis (0) and the spectral pixel axis (2).
+
+    Mapping (with CRVAL=0 and CRPIX=0, CDELT=1):
+      w0 = p0 + s * p2
+      w1 = p1
+      w2 = p2
+
+    After slicing out pixel axis 2 (p2 fixed), world axis 2 is dropped,
+    but inverse world->pixel still depends on the correct w2 value.
+    """
+    w = WCS(naxis=3)
+    w.wcs.ctype = ['X', 'Y', 'FREQ']
+    w.wcs.crpix = [0.0, 0.0, 0.0]
+    w.wcs.crval = [0.0, 0.0, 0.0]
+    w.wcs.cdelt = [1.0, 1.0, 1.0]
+    s = 0.3
+    w.wcs.pc = [[1.0, 0.0, s],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0]]
+    return w
+
+
+def test_world_to_pixel_values_coupled_axes_sliced_matches_full():
+    wcs = build_coupled_wcs_pc_mix()
+    x0, y0, z0 = 12.3, -4.7, 3  # z0 integer for exact slicing
+    world_full = wcs.pixel_to_world_values(x0, y0, z0)
+
+    sll = SlicedLowLevelWCS(wcs, [slice(None), slice(None), int(z0)])
+
+    xp, yp = sll.world_to_pixel_values(world_full[0], world_full[1])
+    assert_allclose([xp, yp], [x0, y0], atol=1e-6)
+
+
+def test_pixel_to_world_values_coupled_axes_sliced():
+    wcs = build_coupled_wcs_pc_mix()
+    x0, y0, z0 = 7.5, 2.0, 5
+    world_full = wcs.pixel_to_world_values(x0, y0, z0)
+
+    sll = SlicedLowLevelWCS(wcs, [slice(None), slice(None), int(z0)])
+
+    w0, w1 = sll.pixel_to_world_values(x0, y0)
+    assert_allclose([w0, w1], [world_full[0], world_full[1]], atol=1e-6)
+
+
+def test_world_to_pixel_values_coupled_axes_broadcasting():
+    wcs = build_coupled_wcs_pc_mix()
+    z0 = 4
+    sll = SlicedLowLevelWCS(wcs, [slice(None), slice(None), int(z0)])
+
+    # Build arrays of pixel coords and convert to world, then back.
+    X = np.array([[0.0, 1.5, 3.0], [4.0, 5.5, 6.0]])
+    Y = np.array([[2.0, -1.0, 0.0], [1.0, 2.0, 3.0]])
+    W0, W1 = sll.pixel_to_world_values(X, Y)
+
+    Xr, Yr = sll.world_to_pixel_values(W0, W1)
+    assert_allclose(Xr, X, atol=1e-6)
+    assert_allclose(Yr, Y, atol=1e-6)

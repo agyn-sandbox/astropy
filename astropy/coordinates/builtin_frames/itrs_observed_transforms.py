@@ -203,6 +203,11 @@ def observed_to_itrs(observed_coo, itrs_frame):
     )
 
     if is_unitspherical:
+        warnings.warn(
+            "Unit-spherical observed inputs are treated as infinite-distance directions.",
+            AstropyWarning,
+            stacklevel=3,
+        )
         enu = np.stack([east, north, up], axis=0)
         ecef = np.tensordot(rotation.T, enu, axes=([1], [0]))
         rep = CartesianRepresentation(

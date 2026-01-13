@@ -82,6 +82,21 @@ def test_unit_spherical_itrs_warns(location, obstime):
     assert isinstance(altaz.data, UnitSphericalRepresentation)
 
 
+@pytest.mark.parametrize("observed_cls, kwargs", [
+    (AltAz, {"az": 45 * u.deg, "alt": 30 * u.deg}),
+    (HADec, {"ha": 1 * u.hourangle, "dec": 20 * u.deg}),
+])
+def test_unit_spherical_observed_to_itrs_warns(location, obstime, observed_cls, kwargs):
+    frame_kwargs = {"obstime": obstime, "location": location, "pressure": 0 * u.hPa}
+    frame_kwargs.update(kwargs)
+    observed = observed_cls(**frame_kwargs)
+
+    with pytest.warns(AstropyWarning, match="Unit-spherical observed inputs"):
+        result = observed.transform_to(ITRS(obstime=obstime))
+
+    assert isinstance(result.data, UnitSphericalRepresentation)
+
+
 def test_zenith_alignment(location, obstime):
     target = _zenith_target(location, obstime, 500 * u.m)
     altaz_frame = AltAz(obstime=obstime, location=location, pressure=0 * u.hPa)

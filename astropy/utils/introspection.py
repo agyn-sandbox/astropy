@@ -6,6 +6,8 @@
 import inspect
 import types
 import importlib
+import re
+import warnings
 from distutils.version import LooseVersion
 
 
@@ -88,6 +90,68 @@ def resolve_name(name, *additional_parts):
     return ret
 
 
+_TAG_RULES = (
+    ('post', 2),
+    ('dev', 1),
+    ('rc', -1),
+    ('beta', -2),
+    ('b', -2),
+    ('alpha', -3),
+    ('a', -3),
+)
+
+_TAG_PATTERNS = {
+    name: re.compile(rf'[-_.]*{name}(\d*)$') for name, _ in _TAG_RULES
+}
+
+_TAG_SENTINEL = 0
+
+
+def _normalize_for_loose_version(version_string):
+    """Normalize a version string for ``LooseVersion`` comparisons."""
+    text = str(version_string or '').strip()
+
+    if '!' in text:
+        text = text.split('!', 1)[1]
+
+    if '+' in text:
+        text = text.split('+', 1)[0]
+
+    match = re.match(r'^(\d+(?:\.\d+)*)', text)
+    release_str = match.group(1) if match else ''
+    remainder = text[len(release_str):]
+
+    release_parts = [int(part) for part in release_str.split('.') if part]
+    if not release_parts:
+        release_parts = [0]
+    while len(release_parts) > 1 and release_parts[-1] == 0:
+        release_parts.pop()
+    release_parts = [value + 1 for value in release_parts]
+
+    tag_code = 0
+    tag_number = 0
+
+    tail = remainder.lower()
+    for name, code in _TAG_RULES:
+        match = _TAG_PATTERNS[name].search(tail)
+        if match:
+            digits = match.group(1)
+            tag_number = int(digits) if digits else 0
+            tag_code = code
+            break
+
+    normalized_code = tag_code + 3
+    components = release_parts + [_TAG_SENTINEL, normalized_code, tag_number]
+    return '.'.join(str(value) for value in components)
+
+
+def _requires_normalization(value):
+    lower = str(value or '').lower()
+    if '!' in lower or '+' in lower:
+        return True
+    return any(name in lower for name, _ in _TAG_RULES)
+
+
 def minversion(module, version, inclusive=True, version_path='__version__'):
     """
     Returns `True` if the specified Python module satisfies a minimum version
@@ -139,10 +203,34 @@ def minversion(module, version, inclusive=True, version_path='__version__'):
     else:
         have_version = resolve_name(module.__name__, version_path)
 
-    if inclusive:
-        return LooseVersion(have_version) >= LooseVersion(version)
-    else:
-        return LooseVersion(have_version) > LooseVersion(version)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', DeprecationWarning)
+        left = LooseVersion(have_version)
+        right = LooseVersion(version)
+
+    comparator = (lambda a, b: a >= b) if inclusive else (lambda a, b: a > b)
+
+    needs_normalized = (
+        _requires_normalization(have_version) or
+        _requires_normalization(version)
+    )
+
+    try:
+        direct_result = comparator(left, right)
+    except TypeError:
+        needs_normalized = True
+        direct_result = None
+
+    if needs_normalized:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', DeprecationWarning)
+            normalized_have = LooseVersion(
+                _normalize_for_loose_version(have_version))
+            normalized_need = LooseVersion(
+                _normalize_for_loose_version(version))
+        return comparator(normalized_have, normalized_need)
+
+    return direct_result
 
 
 def find_current_module(depth=1, finddiff=False):
@@ -313,7 +401,10 @@ def find_mod_objs(modname, onlylocals=False):
     if onlylocals:
         if onlylocals is True:
             onlylocals = [modname]
-        valids = [any(fqn.startswith(nm) for nm in onlylocals) for fqn in fqnames]
+        valids = [
+            any(fqn.startswith(nm) for nm in onlylocals)
+            for fqn in fqnames
+        ]
         localnames = [e for i, e in enumerate(localnames) if valids[i]]
         fqnames = [e for i, e in enumerate(fqnames) if valids[i]]
         objs = [e for i, e in enumerate(objs) if valids[i]]

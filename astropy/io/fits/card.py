@@ -858,32 +858,29 @@ class Card(_Verify):
                 if not m:
                     return kw, vc
 
+                comment = m.group("comm")
                 value = m.group("strg") or ""
-                trailing = vc[m.end("strg") : m.end(0)]
-                if trailing:
-                    trailing_spaces = trailing.replace("'", "")
-                    if trailing_spaces:
-                        space_len = len(trailing_spaces) - len(trailing_spaces.lstrip(" "))
-                        if space_len > 0:
-                            value += trailing_spaces[:space_len]
-                remainder = vc[m.end(0) :]
-                if value and value[-1] == "&":
+                if value.endswith("&"):
                     value = value[:-1]
-                if remainder:
-                    remainder = remainder.rstrip()
-                    if remainder and not remainder.startswith("/"):
-                        # Handle value fragments that were not consumed by the
-                        # regex match (e.g. text following doubled quotes
-                        # before the continuation marker) by appending them to
-                        # the accumulated value.
-                        extra_value = remainder
-                        if "/" in extra_value:
-                            extra_value = extra_value.split("/", 1)[0]
-                        if "&" in extra_value:
-                            extra_value = extra_value.split("&", 1)[0]
+
+                if comment is None:
+                    trailing = vc[m.end("strg") : m.end(0)]
+                    if trailing:
+                        trailing_spaces = trailing.replace("'", "")
+                        if trailing_spaces:
+                            value += trailing_spaces
+
+                remainder = vc[m.end(0) :]
+                if remainder and comment is None:
+                    extra_value = remainder.rstrip()
+                    if extra_value.endswith("'"):
+                        extra_value = extra_value[:-1]
+                        extra_value = extra_value.rstrip()
+                    if extra_value.endswith("&"):
+                        extra_value = extra_value[:-1]
+                    if extra_value:
                         value += extra_value
                 values.append(value)
-                comment = m.group("comm")
                 if comment:
                     comments.append(comment.rstrip())
 
